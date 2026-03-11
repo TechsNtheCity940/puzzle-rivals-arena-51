@@ -49,6 +49,7 @@ export default function MatchPage() {
   const [clockNow, setClockNow] = useState(Date.now());
   const [optimisticProgress, setOptimisticProgress] = useState(0);
   const [rematchKey, setRematchKey] = useState(0);
+  const [votePending, setVotePending] = useState<"continue" | "exit" | null>(null);
 
   const readyTimeoutRef = useRef<number | null>(null);
   const progressTimeoutRef = useRef<number | null>(null);
@@ -120,7 +121,7 @@ export default function MatchPage() {
   }, [lobby, token]);
 
   useEffect(() => {
-    if (lobby?.status !== "practice" && lobby?.status !== "live") return;
+    if (lobby?.status !== "practice" && lobby?.status !== "live" && lobby?.status !== "intermission") return;
 
     const interval = window.setInterval(() => {
       setClockNow(Date.now());
@@ -142,6 +143,12 @@ export default function MatchPage() {
     }
   }, [lobby?.status]);
 
+  useEffect(() => {
+    if (!lobby || !user) return;
+    if (lobby.players.some((player) => player.playerId === user.id)) return;
+    navigate("/play");
+  }, [lobby, navigate, user]);
+
   const selfPlayer = lobby?.players.find((player) => player.playerId === user?.id) ?? null;
   const rivals = useMemo(
     () => lobby?.players.filter((player) => player.playerId !== user?.id) ?? [],
@@ -157,6 +164,10 @@ export default function MatchPage() {
   const liveTimeLeft = Math.max(
     0,
     Math.ceil(((lobby?.liveEndsAt ? new Date(lobby.liveEndsAt).getTime() : 0) - clockNow) / 1000),
+  );
+  const intermissionTimeLeft = Math.max(
+    0,
+    Math.ceil(((lobby?.intermissionEndsAt ? new Date(lobby.intermissionEndsAt).getTime() : 0) - clockNow) / 1000),
   );
 
   function queueProgressSubmission(stage: "practice" | "live", submission: PuzzleSubmission, progress: number) {
@@ -193,6 +204,25 @@ export default function MatchPage() {
         submission: lastSubmissionRef.current,
       }),
     });
+  }
+
+  async function submitNextRoundVote(vote: "continue" | "exit") {
+    if (!token || !lobby) return;
+    setVotePending(vote);
+
+    try {
+      await apiRequest(`/api/lobbies/${lobby.id}/next-round-vote`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({ vote }),
+      });
+
+      if (vote === "exit") {
+        navigate("/play");
+      }
+    } finally {
+      setVotePending(null);
+    }
   }
 
   if (!isReady || !user || !lobby) {
@@ -349,7 +379,7 @@ export default function MatchPage() {
     );
   }
 
-  if (lobby.status === "complete") {
+  if (lobby.status === "intermission") {
     const results = lobby.results?.standings ?? standings.map((player, index) => ({
       playerId: player.playerId,
       username: player.username,
@@ -374,6 +404,12 @@ export default function MatchPage() {
             <p className="mt-2 text-sm text-muted-foreground">
               {selectionMeta?.label} live match finished with a fresh generated seed.
             </p>
+            <div className="mt-4 inline-flex rounded-2xl bg-background/35 px-4 py-3 text-center">
+              <div>
+                <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Decision Timer</p>
+                <p className="text-2xl font-black text-primary">{intermissionTimeLeft}s</p>
+              </div>
+            </div>
           </div>
 
           <div className="panel space-y-3">
@@ -416,19 +452,30 @@ export default function MatchPage() {
           </div>
 
           <div className="flex gap-3">
-            <Button onClick={() => setRematchKey((current) => current + 1)} variant="play" size="lg" className="flex-1">
+            <Button
+              onClick={() => void submitNextRoundVote("continue")}
+              variant="play"
+              size="lg"
+              className="flex-1"
+              disabled={votePending !== null}
+            >
               <RotateCcw size={16} />
-              Play Again
+              Next Round
             </Button>
-            <Button variant="outline" size="lg">
+            <Button
+              onClick={() => void submitNextRoundVote("exit")}
+              variant="outline"
+              size="lg"
+              disabled={votePending !== null}
+            >
               <Share2 size={16} />
-              Share
+              Exit Lobby
             </Button>
           </div>
 
-          <Button onClick={() => navigate("/")} variant="outline" size="lg" className="w-full">
+          <Button onClick={() => setRematchKey((current) => current + 1)} variant="outline" size="lg" className="w-full">
             <Home size={16} />
-            Back Home
+            Find New Lobby
           </Button>
         </div>
       </div>

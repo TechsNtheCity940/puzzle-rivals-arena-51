@@ -1,5 +1,9 @@
-import { PUZZLE_TYPES } from "@/lib/seed-data";
-import type { PuzzleMeta, PuzzleType } from "@/lib/types";
+interface MatchPuzzleMeta {
+  type: MatchPlayablePuzzleType;
+  label: string;
+  icon: string;
+  description: string;
+}
 
 export type MatchPlayablePuzzleType =
   | "rotate_pipes"
@@ -7,12 +11,18 @@ export type MatchPlayablePuzzleType =
   | "pattern_match"
   | "word_scramble"
   | "tile_slide"
-  | "sudoku_mini";
+  | "sudoku_mini"
+  | "maze"
+  | "memory_grid"
+  | "riddle_choice"
+  | "wordle_guess"
+  | "chess_tactic"
+  | "checkers_tactic";
 
 export interface MatchPuzzleSelection {
   lobbyId: string;
   puzzleType: MatchPlayablePuzzleType;
-  meta: PuzzleMeta;
+  meta: MatchPuzzleMeta;
   difficulty: 1 | 2 | 3 | 4 | 5;
   practiceSeed: number;
   liveSeed: number;
@@ -25,7 +35,88 @@ const MATCH_PLAYABLE_PUZZLES: MatchPlayablePuzzleType[] = [
   "word_scramble",
   "tile_slide",
   "sudoku_mini",
+  "maze",
+  "memory_grid",
+  "riddle_choice",
+  "wordle_guess",
+  "chess_tactic",
+  "checkers_tactic",
 ];
+
+const MATCH_PUZZLE_META: Record<MatchPlayablePuzzleType, MatchPuzzleMeta> = {
+  rotate_pipes: {
+    type: "rotate_pipes",
+    label: "Pipe Flow",
+    icon: "🔧",
+    description: "Rotate the tiles until the source path connects cleanly to the sink.",
+  },
+  number_grid: {
+    type: "number_grid",
+    label: "Number Crunch",
+    icon: "🔢",
+    description: "Fill the empty cells so every row and column matches the target sum.",
+  },
+  pattern_match: {
+    type: "pattern_match",
+    label: "Pattern Eye",
+    icon: "👁",
+    description: "Identify the missing piece by reading the shape and color rule.",
+  },
+  word_scramble: {
+    type: "word_scramble",
+    label: "Word Blitz",
+    icon: "🔤",
+    description: "Tap the scrambled letters in order to spell the hidden word.",
+  },
+  tile_slide: {
+    type: "tile_slide",
+    label: "Tile Shift",
+    icon: "⬜",
+    description: "Slide tiles into the empty space until the board returns to order.",
+  },
+  sudoku_mini: {
+    type: "sudoku_mini",
+    label: "Sudoku Sprint",
+    icon: "🧩",
+    description: "Fill 1-4 so each row, column, and 2x2 box has no repeats.",
+  },
+  maze: {
+    type: "maze",
+    label: "Maze Rush",
+    icon: "🏁",
+    description: "Guide the runner through the maze and reach the goal square.",
+  },
+  memory_grid: {
+    type: "memory_grid",
+    label: "Memory Flash",
+    icon: "🧠",
+    description: "Memorize the highlighted pattern, then tap the same cells back.",
+  },
+  riddle_choice: {
+    type: "riddle_choice",
+    label: "Riddle Relay",
+    icon: "❓",
+    description: "Solve rapid-fire riddles with multiple-choice answers.",
+  },
+  wordle_guess: {
+    type: "wordle_guess",
+    label: "Word Strike",
+    icon: "🟩",
+    description: "Guess the five-letter word using color feedback from each attempt.",
+  },
+  chess_tactic: {
+    type: "chess_tactic",
+    label: "Chess Shot",
+    icon: "♞",
+    description: "Pick the best tactical move from the presented chess position.",
+  },
+  checkers_tactic: {
+    type: "checkers_tactic",
+    label: "Checkers Trap",
+    icon: "⚫",
+    description: "Choose the strongest capture or positional follow-up in a checkers setup.",
+  },
+};
 
 let uniqueSeedCounter = 0;
 const sessionSeeds = new Set<number>();
@@ -54,8 +145,8 @@ export function getMatchPlayablePuzzles() {
   return MATCH_PLAYABLE_PUZZLES.map((type) => getPuzzleMeta(type));
 }
 
-export function getPuzzleMeta(type: MatchPlayablePuzzleType): PuzzleMeta {
-  return PUZZLE_TYPES.find((p) => p.type === type) as PuzzleMeta;
+export function getPuzzleMeta(type: MatchPlayablePuzzleType): MatchPuzzleMeta {
+  return MATCH_PUZZLE_META[type];
 }
 
 export function getAdaptiveDifficulty(averageElo: number, mode: string): 1 | 2 | 3 | 4 | 5 {
@@ -89,6 +180,6 @@ export function createMatchPuzzleSelection(averageElo: number, mode: string): Ma
   };
 }
 
-export function isPlayableMatchPuzzle(type: PuzzleType): type is MatchPlayablePuzzleType {
+export function isPlayableMatchPuzzle(type: string): type is MatchPlayablePuzzleType {
   return MATCH_PLAYABLE_PUZZLES.includes(type as MatchPlayablePuzzleType);
 }

@@ -16,6 +16,7 @@ import { getRankTier } from "../seed/users.js";
 
 const PRACTICE_DURATION_MS = 12_000;
 const LIVE_DURATION_MS = 90_000;
+const INTERMISSION_DURATION_MS = 10_000;
 
 function averageElo(players: LobbyPlayer[]) {
   return Math.round(players.reduce((sum, player) => sum + player.elo, 0) / players.length);
@@ -102,6 +103,34 @@ export class LobbyManager extends EventEmitter {
     return this.requireLobby(lobby.id);
   }
 
+  setNextRoundVote(lobbyId: string, playerId: string, vote: "continue" | "exit") {
+    const lobby = this.requireLobby(lobbyId);
+    if (lobby.status !== "intermission") {
+      throw new Error("Lobby is not in intermission.");
+    }
+
+    const player = lobby.players.find((entry) => entry.playerId === playerId);
+    if (!player) {
+      throw new Error("Player not found in lobby.");
+    }
+
+    player.nextRoundVote = vote;
+    lobby.updatedAt = new Date().toISOString();
+    this.database.saveLobby(lobby);
+    this.broadcastSnapshot(lobby.id);
+
+    if (vote === "exit") {
+      this.resolveIntermission(lobby.id);
+      return this.requireLobby(lobby.id);
+    }
+
+    if (lobby.players.every((entry) => entry.nextRoundVote === "continue")) {
+      this.startNextRound(lobby.id);
+    }
+
+    return this.requireLobby(lobby.id);
+  }
+
   reportProgress(lobbyId: string, playerId: string, stage: "practice" | "live", submission: PuzzleSubmission) {
     const lobby = this.requireLobby(lobbyId);
     if (!lobby.selection) throw new Error("Lobby does not have a selected puzzle.");
@@ -159,9 +188,9 @@ export class LobbyManager extends EventEmitter {
 
   completeLobby(lobbyId: string) {
     const lobby = this.requireLobby(lobbyId);
-    if (lobby.status === "complete") return lobby;
+    if (lobby.status === "intermission" || lobby.status === "complete") return lobby;
 
-    lobby.status = "complete";
+    lobby.status = "intermission";
     lobby.updatedAt = new Date().toISOString();
     const standings = rankPlayers(lobby.players).map((player, index) => {
       const reward = getReward(index + 1);
@@ -185,10 +214,24 @@ export class LobbyManager extends EventEmitter {
       completedAt: new Date().toISOString(),
       standings,
     };
+    lobby.intermissionStartsAt = new Date().toISOString();
+    lobby.intermissionEndsAt = new Date(Date.now() + INTERMISSION_DURATION_MS).toISOString();
+    lobby.players = lobby.players.map((player) => ({
+      ...player,
+      nextRoundVote: player.isBot ? "continue" : null,
+    }));
 
     this.clearLobbyTimers(lobbyId);
     this.database.saveLobby(lobby);
     this.broadcastSnapshot(lobby.id);
+
+    const timeout = setTimeout(() => {
+      this.phaseTimeouts.delete(lobbyId);
+      this.resolveIntermission(lobbyId);
+    }, INTERMISSION_DURATION_MS);
+    timeout.unref();
+    this.phaseTimeouts.set(lobbyId, timeout);
+
     return lobby;
   }
 
@@ -228,6 +271,8 @@ export class LobbyManager extends EventEmitter {
       practiceEndsAt: null,
       liveStartsAt: null,
       liveEndsAt: null,
+      intermissionStartsAt: null,
+      intermissionEndsAt: null,
       results: null,
     };
 
@@ -243,6 +288,7 @@ export class LobbyManager extends EventEmitter {
       rank: user.rank,
       isBot,
       ready: isBot,
+      nextRoundVote: null,
       joinedAt,
       progress: 0,
       practiceProgress: 0,
@@ -295,6 +341,7 @@ export class LobbyManager extends EventEmitter {
     lobby.players = lobby.players.map((player) => ({
       ...player,
       ready: player.isBot,
+      nextRoundVote: null,
     }));
     this.database.saveLobby(lobby);
     this.broadcastSnapshot(lobby.id);
@@ -330,6 +377,7 @@ export class LobbyManager extends EventEmitter {
       ...player,
       progress: 0,
       solvedAtMs: null,
+      nextRoundVote: null,
     }));
     this.database.saveLobby(lobby);
     this.broadcastSnapshot(lobby.id);
@@ -401,6 +449,68 @@ export class LobbyManager extends EventEmitter {
     };
 
     this.database.updateUser(updatedUser);
+  }
+
+  private resolveIntermission(lobbyId: string) {
+    const lobby = this.requireLobby(lobbyId);
+    if (lobby.status !== "intermission") return;
+
+    const continuingPlayers = lobby.players.filter((player) => player.nextRoundVote === "continue");
+    lobby.players = continuingPlayers.map((player) => ({
+      ...player,
+      ready: player.isBot,
+      nextRoundVote: null,
+      progress: 0,
+      practiceProgress: 0,
+      solvedAtMs: null,
+      reward: undefined,
+    }));
+
+    lobby.results = null;
+    lobby.selection = null;
+    lobby.practiceStartsAt = null;
+    lobby.practiceEndsAt = null;
+    lobby.liveStartsAt = null;
+    lobby.liveEndsAt = null;
+    lobby.intermissionStartsAt = null;
+    lobby.intermissionEndsAt = null;
+    lobby.updatedAt = new Date().toISOString();
+    lobby.expiresAt = new Date(Date.now() + this.lobbyTtlMs).toISOString();
+
+    if (lobby.players.length >= lobby.maxPlayers) {
+      this.database.saveLobby(lobby);
+      this.prepareLobby(lobby.id);
+      return;
+    }
+
+    lobby.status = "filling";
+    this.database.saveLobby(lobby);
+    this.broadcastSnapshot(lobby.id);
+    this.scheduleBotFill(lobby.id);
+  }
+
+  private startNextRound(lobbyId: string) {
+    const lobby = this.requireLobby(lobbyId);
+    lobby.results = null;
+    lobby.selection = null;
+    lobby.practiceStartsAt = null;
+    lobby.practiceEndsAt = null;
+    lobby.liveStartsAt = null;
+    lobby.liveEndsAt = null;
+    lobby.intermissionStartsAt = null;
+    lobby.intermissionEndsAt = null;
+    lobby.updatedAt = new Date().toISOString();
+    lobby.players = lobby.players.map((player) => ({
+      ...player,
+      ready: player.isBot,
+      nextRoundVote: null,
+      progress: 0,
+      practiceProgress: 0,
+      solvedAtMs: null,
+      reward: undefined,
+    }));
+    this.database.saveLobby(lobby);
+    this.prepareLobby(lobby.id);
   }
 
   private requireLobby(lobbyId: string) {

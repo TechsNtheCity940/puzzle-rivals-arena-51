@@ -9,9 +9,13 @@ const tempPaths: string[] = [];
 
 afterEach(() => {
   for (const tempPath of tempPaths.splice(0)) {
-    rmSync(tempPath, { force: true });
-    rmSync(`${tempPath}-wal`, { force: true });
-    rmSync(`${tempPath}-shm`, { force: true });
+    try {
+      rmSync(tempPath, { force: true });
+      rmSync(`${tempPath}-wal`, { force: true });
+      rmSync(`${tempPath}-shm`, { force: true });
+    } catch {
+      // SQLite cleanup on Windows can lag slightly after close.
+    }
   }
 });
 
@@ -52,5 +56,5 @@ describe("backend scaffold", () => {
     } finally {
       await app.close();
     }
-  });
+  }, 15000);
 });

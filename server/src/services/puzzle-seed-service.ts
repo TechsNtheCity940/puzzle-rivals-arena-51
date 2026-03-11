@@ -8,6 +8,12 @@ const MATCH_PLAYABLE_PUZZLES: MatchPlayablePuzzleType[] = [
   "word_scramble",
   "tile_slide",
   "sudoku_mini",
+  "maze",
+  "memory_grid",
+  "riddle_choice",
+  "wordle_guess",
+  "chess_tactic",
+  "checkers_tactic",
 ];
 
 const PUZZLE_CATALOG: Record<MatchPlayablePuzzleType, PuzzleCatalogEntry> = {
@@ -46,6 +52,42 @@ const PUZZLE_CATALOG: Record<MatchPlayablePuzzleType, PuzzleCatalogEntry> = {
     label: "Sudoku Sprint",
     icon: "🧩",
     description: "Fill 1-4 so each row, column, and 2x2 box has no repeats.",
+  },
+  maze: {
+    type: "maze",
+    label: "Maze Rush",
+    icon: "🏁",
+    description: "Guide the runner through the maze and reach the goal square.",
+  },
+  memory_grid: {
+    type: "memory_grid",
+    label: "Memory Flash",
+    icon: "🧠",
+    description: "Memorize the highlighted pattern, then tap the same cells back.",
+  },
+  riddle_choice: {
+    type: "riddle_choice",
+    label: "Riddle Relay",
+    icon: "❓",
+    description: "Solve rapid-fire riddles with multiple-choice answers.",
+  },
+  wordle_guess: {
+    type: "wordle_guess",
+    label: "Word Strike",
+    icon: "🟩",
+    description: "Guess the five-letter word using color feedback from each attempt.",
+  },
+  chess_tactic: {
+    type: "chess_tactic",
+    label: "Chess Shot",
+    icon: "♞",
+    description: "Pick the best tactical move from the presented chess position.",
+  },
+  checkers_tactic: {
+    type: "checkers_tactic",
+    label: "Checkers Trap",
+    icon: "⚫",
+    description: "Choose the strongest capture or positional follow-up in a checkers setup.",
   },
 };
 

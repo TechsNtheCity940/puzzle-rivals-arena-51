@@ -12,6 +12,10 @@ const lobbyPlayerActionSchema = z.object({
   stage: z.enum(["practice", "live"]).optional(),
 });
 
+const nextRoundVoteSchema = z.object({
+  vote: z.enum(["continue", "exit"]),
+});
+
 const progressBodySchema = z.object({
   stage: z.enum(["practice", "live"]),
   submission: z.discriminatedUnion("kind", [
@@ -38,6 +42,30 @@ const progressBodySchema = z.object({
     z.object({
       kind: z.literal("sudoku_mini"),
       values: z.array(z.number().int().nullable()),
+    }),
+    z.object({
+      kind: z.literal("maze"),
+      position: z.number().int().nonnegative(),
+    }),
+    z.object({
+      kind: z.literal("memory_grid"),
+      selectedIndices: z.array(z.number().int().nonnegative()),
+    }),
+    z.object({
+      kind: z.literal("riddle_choice"),
+      answers: z.array(z.number().int().nonnegative()),
+    }),
+    z.object({
+      kind: z.literal("wordle_guess"),
+      guesses: z.array(z.string().min(1)),
+    }),
+    z.object({
+      kind: z.literal("chess_tactic"),
+      answers: z.array(z.number().int().nonnegative()),
+    }),
+    z.object({
+      kind: z.literal("checkers_tactic"),
+      answers: z.array(z.number().int().nonnegative()),
     }),
   ]),
 });
@@ -96,6 +124,14 @@ export async function registerMatchmakingRoutes(
     const params = z.object({ lobbyId: z.string().uuid() }).parse(request.params);
     const body = progressBodySchema.parse(request.body);
     const lobby = lobbyManager.submitSolve(params.lobbyId, authenticated.user.id, body.stage, body.submission);
+    reply.send({ lobby });
+  });
+
+  app.post("/api/lobbies/:lobbyId/next-round-vote", async (request, reply) => {
+    const authenticated = authService.requireAuthenticatedUser(request);
+    const params = z.object({ lobbyId: z.string().uuid() }).parse(request.params);
+    const body = nextRoundVoteSchema.parse(request.body);
+    const lobby = lobbyManager.setNextRoundVote(params.lobbyId, authenticated.user.id, body.vote);
     reply.send({ lobby });
   });
 

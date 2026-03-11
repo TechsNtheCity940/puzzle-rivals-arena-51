@@ -8,7 +8,13 @@ export type MatchPlayablePuzzleType =
   | "pattern_match"
   | "word_scramble"
   | "tile_slide"
-  | "sudoku_mini";
+  | "sudoku_mini"
+  | "maze"
+  | "memory_grid"
+  | "riddle_choice"
+  | "wordle_guess"
+  | "chess_tactic"
+  | "checkers_tactic";
 
 export interface PuzzleCatalogEntry {
   type: MatchPlayablePuzzleType;
@@ -73,6 +79,7 @@ export interface LobbyPlayer {
   rank: RankTier;
   isBot: boolean;
   ready: boolean;
+  nextRoundVote: "continue" | "exit" | null;
   joinedAt: string;
   progress: number;
   practiceProgress: number;
@@ -99,7 +106,7 @@ export interface LobbyResults {
 export interface LobbyRecord {
   id: string;
   mode: MatchMode;
-  status: "filling" | "ready" | "practice" | "live" | "complete";
+  status: "filling" | "ready" | "practice" | "live" | "intermission" | "complete";
   maxPlayers: number;
   createdAt: string;
   updatedAt: string;
@@ -110,6 +117,8 @@ export interface LobbyRecord {
   practiceEndsAt: string | null;
   liveStartsAt: string | null;
   liveEndsAt: string | null;
+  intermissionStartsAt: string | null;
+  intermissionEndsAt: string | null;
   results: LobbyResults | null;
 }
 
@@ -162,10 +171,46 @@ export interface SudokuMiniSubmission {
   values: Array<number | null>;
 }
 
+export interface MazeSubmission {
+  kind: "maze";
+  position: number;
+}
+
+export interface MemoryGridSubmission {
+  kind: "memory_grid";
+  selectedIndices: number[];
+}
+
+export interface RiddleChoiceSubmission {
+  kind: "riddle_choice";
+  answers: number[];
+}
+
+export interface WordleGuessSubmission {
+  kind: "wordle_guess";
+  guesses: string[];
+}
+
+export interface ChessTacticSubmission {
+  kind: "chess_tactic";
+  answers: number[];
+}
+
+export interface CheckersTacticSubmission {
+  kind: "checkers_tactic";
+  answers: number[];
+}
+
 export type PuzzleSubmission =
   | RotatePipesSubmission
   | NumberGridSubmission
   | PatternMatchSubmission
   | WordScrambleSubmission
   | TileSlideSubmission
-  | SudokuMiniSubmission;
+  | SudokuMiniSubmission
+  | MazeSubmission
+  | MemoryGridSubmission
+  | RiddleChoiceSubmission
+  | WordleGuessSubmission
+  | ChessTacticSubmission
+  | CheckersTacticSubmission;
