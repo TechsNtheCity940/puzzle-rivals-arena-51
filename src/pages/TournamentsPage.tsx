@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trophy, Users, Clock, ChevronRight, Zap } from "lucide-react";
+import { Trophy, Users, Zap, Radar } from "lucide-react";
 import { TOURNAMENTS, PUZZLE_TYPES } from "@/lib/seed-data";
 
 type Tab = "upcoming" | "live" | "completed";
@@ -7,27 +7,28 @@ type Tab = "upcoming" | "live" | "completed";
 export default function TournamentsPage() {
   const [tab, setTab] = useState<Tab>("live");
 
-  const filtered = TOURNAMENTS.filter(t => t.status === tab);
+  const filtered = TOURNAMENTS.filter((t) => t.status === tab);
   const tabs: { id: Tab; label: string }[] = [
     { id: "live", label: "Live" },
     { id: "upcoming", label: "Upcoming" },
     { id: "completed", label: "Completed" },
   ];
+  const liveTournament = TOURNAMENTS.find((t) => t.status === "live");
 
   return (
-    <div className="flex flex-col">
-      <div className="px-4 pt-4 pb-3">
-        <h1 className="font-display font-bold text-lg">Tournaments</h1>
+    <div className="space-y-4 px-4 pb-4 pt-6">
+      <div>
+        <p className="hud-label">Competitive Events</p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight">Tournaments</h1>
       </div>
 
-      {/* Tabs */}
-      <div className="flex px-4 gap-1 mb-4">
-        {tabs.map(t => (
+      <div className="flex gap-2">
+        {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 h-9 rounded text-xs font-display font-bold uppercase tracking-wider transition-colors ${
-              tab === t.id ? "bg-ion text-primary-foreground" : "bg-secondary text-muted-foreground"
+            className={`flex-1 rounded-full px-4 py-2.5 font-hud text-xs font-semibold uppercase tracking-[0.18em] transition-all ${
+              tab === t.id ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"
             }`}
           >
             {t.label}
@@ -35,51 +36,73 @@ export default function TournamentsPage() {
         ))}
       </div>
 
-      {/* Royale Banner */}
-      <div className="mx-4 mb-4 surface rounded p-4 border-ion">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded bg-ion/10 flex items-center justify-center">
-            <Trophy size={24} className="text-ion" />
+      {liveTournament && (
+        <section className="panel relative overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(191,255,0,0.18),_transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.04),transparent)]" />
+          <div className="relative flex items-center gap-3">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12">
+              <Trophy size={24} className="text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="hud-label text-primary">Featured Event</p>
+              <p className="mt-1 text-lg font-black">{liveTournament.name}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Live bracket, elimination rounds, rapid entry lock.</p>
+            </div>
+            <div className="rounded-2xl bg-primary/12 px-3 py-2 text-center">
+              <p className="font-hud text-[10px] uppercase tracking-[0.18em] text-primary">Live</p>
+              <p className="text-sm font-black">{liveTournament.currentPlayers}</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="font-display font-bold text-sm">Puzzle Royale</p>
-            <p className="text-[11px] text-muted-foreground">50 players, elimination rounds, 1 winner</p>
+          <div className="relative mt-4 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-2xl bg-background/35 p-3">
+              <p className="hud-label">Prize</p>
+              <p className="mt-1 text-sm font-black">🪙 {liveTournament.prizePool.toLocaleString()}</p>
+            </div>
+            <div className="rounded-2xl bg-background/35 p-3">
+              <p className="hud-label">Entry</p>
+              <p className="mt-1 text-sm font-black">{liveTournament.entryFee || "Free"}</p>
+            </div>
+            <div className="rounded-2xl bg-background/35 p-3">
+              <p className="hud-label">Status</p>
+              <p className="mt-1 text-sm font-black">Active</p>
+            </div>
           </div>
-          <div className="text-center">
-            <p className="text-ion font-display font-bold text-sm">LIVE</p>
-            <p className="text-[10px] text-muted-foreground">38 left</p>
-          </div>
-        </div>
-      </div>
+        </section>
+      )}
 
-      {/* Tournament list */}
-      <div className="px-4 space-y-2">
+      <div className="space-y-3">
         {filtered.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">No {tab} tournaments</p>
+          <p className="panel text-center text-sm text-muted-foreground">No {tab} tournaments</p>
         )}
-        {filtered.map(t => {
-          const puzzle = PUZZLE_TYPES.find(p => p.type === t.puzzleType);
+        {filtered.map((t) => {
+          const puzzle = PUZZLE_TYPES.find((p) => p.type === t.puzzleType);
           return (
-            <button key={t.id} className="w-full surface-interactive rounded p-4 text-left">
+            <button key={t.id} className="panel-interactive w-full text-left">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{puzzle?.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-display font-bold text-sm">{t.name}</p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-background/40 text-2xl">
+                  {puzzle?.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-black">{t.name}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <span className="flex items-center gap-1 text-[11px] font-hud text-muted-foreground">
                       <Users size={10} />
                       {t.currentPlayers}/{t.maxPlayers}
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1 text-[11px] font-hud text-muted-foreground">
                       <Zap size={10} />
                       {t.entryFee > 0 ? `${t.entryFee} coins` : "Free"}
+                    </span>
+                    <span className="flex items-center gap-1 text-[11px] font-hud text-muted-foreground">
+                      <Radar size={10} />
+                      {t.status}
                     </span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-display font-bold text-sm text-ion">🪙 {t.prizePool.toLocaleString()}</p>
+                  <p className="text-sm font-black text-primary">🪙 {t.prizePool.toLocaleString()}</p>
                   {t.status === "upcoming" && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                    <p className="mt-1 text-[11px] font-hud text-muted-foreground">
                       {new Date(t.startsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                     </p>
                   )}

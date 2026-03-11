@@ -6,6 +6,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.env
+.env.*
+!.env.example
+server/.env
+server/data/*.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal
 
 node_modules
 dist

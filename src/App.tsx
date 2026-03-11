@@ -10,29 +10,32 @@ import TournamentsPage from "./pages/TournamentsPage";
 import StorePage from "./pages/StorePage";
 import SeasonPage from "./pages/SeasonPage";
 import ProfilePage from "./pages/ProfilePage";
+import { AuthProvider } from "./providers/AuthProvider";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Sonner />
-      <BrowserRouter>
-        <AppShell>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/play" element={<PlayPage />} />
-            <Route path="/match" element={<MatchPage />} />
-            <Route path="/tournaments" element={<TournamentsPage />} />
-            <Route path="/store" element={<StorePage />} />
-            <Route path="/season" element={<SeasonPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AppShell>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Sonner />
+        <BrowserRouter>
+          <AppShell>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/play" element={<PlayPage />} />
+              <Route path="/match" element={<MatchPage />} />
+              <Route path="/tournaments" element={<TournamentsPage />} />
+              <Route path="/store" element={<StorePage />} />
+              <Route path="/season" element={<SeasonPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AppShell>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

@@ -1,72 +1,72 @@
 import { motion } from "framer-motion";
 import { CURRENT_SEASON } from "@/lib/seed-data";
-import { Lock, Star, Gift, ChevronRight } from "lucide-react";
+import { Lock, Star, Gift } from "lucide-react";
 
 export default function SeasonPage() {
   const season = CURRENT_SEASON;
   const progressPct = Math.round((season.currentTier / season.maxTier) * 100);
 
   return (
-    <div className="flex flex-col">
-      <div className="px-4 pt-4 pb-3">
-        <h1 className="font-display font-bold text-lg">Season {season.seasonNumber}</h1>
-        <p className="text-xs text-muted-foreground">{season.name}</p>
+    <div className="space-y-4 px-4 pb-4 pt-6">
+      <div>
+        <p className="hud-label">Season Progression</p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight">Season {season.seasonNumber}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{season.name}</p>
       </div>
 
-      {/* Progress overview */}
-      <div className="mx-4 mb-4 surface rounded p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground font-body">Tier {season.currentTier}/{season.maxTier}</span>
-          <span className="text-xs font-condensed font-bold text-ion">{progressPct}%</span>
+      <section className="panel">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="hud-label">Battle Pass</p>
+            <h2 className="mt-1 text-lg font-black">Tier {season.currentTier}/{season.maxTier}</h2>
+          </div>
+          <span className="rounded-full bg-primary/12 px-3 py-1.5 font-hud text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+            {progressPct}%
+          </span>
         </div>
-        <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
           <motion.div
-            className="h-full bg-ion rounded-full"
+            className="h-full rounded-full bg-gradient-prestige"
             initial={{ width: 0 }}
             animate={{ width: `${progressPct}%` }}
             transition={{ duration: 1, ease: "easeOut" }}
           />
         </div>
         {!season.isPremium && (
-          <button className="mt-3 w-full h-10 bg-ion text-primary-foreground font-display font-bold text-xs uppercase tracking-wider rounded flex items-center justify-center gap-2">
+          <button className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-prestige text-xs font-black uppercase tracking-[0.18em] text-white">
             <Star size={14} />
-            Unlock Premium Track — $9.99
+            Unlock Premium Track - $9.99
           </button>
         )}
-      </div>
+      </section>
 
-      {/* Track */}
-      <div className="px-4 space-y-1 pb-4">
-        {season.tracks.map(track => (
+      <div className="space-y-2">
+        {season.tracks.map((track) => (
           <div
             key={track.tier}
-            className={`surface rounded p-3 flex items-center gap-3 ${
-              track.isUnlocked ? "" : "opacity-50"
-            }`}
+            className={`surface flex items-center gap-3 p-3 ${track.isUnlocked ? "" : "opacity-50"}`}
           >
-            <div className={`w-8 h-8 rounded flex items-center justify-center font-display font-bold text-sm ${
-              track.isUnlocked ? "bg-ion text-primary-foreground" : "bg-secondary"
+            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-black ${
+              track.isUnlocked ? "bg-primary text-primary-foreground" : "bg-secondary"
             }`}>
               {track.tier}
             </div>
 
-            {/* Free reward */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1">
               {track.freeReward ? (
                 <div className="flex items-center gap-1.5">
-                  <Gift size={12} className="text-muted-foreground flex-shrink-0" />
-                  <span className="text-[11px] font-body truncate">{track.freeReward.label}</span>
+                  <Gift size={12} className="flex-shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm">{track.freeReward.label}</span>
                 </div>
               ) : (
-                <span className="text-[11px] text-muted-foreground">—</span>
+                <span className="text-sm text-muted-foreground">-</span>
               )}
             </div>
 
-            {/* Premium reward */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              {!season.isPremium && <Lock size={10} className="text-muted-foreground flex-shrink-0" />}
-              <span className={`text-[11px] font-body truncate ${season.isPremium ? "text-ion" : "text-muted-foreground"}`}>
-                {track.premiumReward?.label || "—"}
+            <div className="min-w-0 flex items-center gap-1.5">
+              {!season.isPremium && <Lock size={10} className="flex-shrink-0 text-muted-foreground" />}
+              <span className={`truncate text-sm ${season.isPremium ? "text-primary" : "text-muted-foreground"}`}>
+                {track.premiumReward?.label || "-"}
               </span>
             </div>
           </div>

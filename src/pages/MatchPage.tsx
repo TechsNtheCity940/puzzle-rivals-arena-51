@@ -1,350 +1,512 @@
-import { useState, useEffect, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Zap, RotateCcw, Share2, Swords } from "lucide-react";
-import { CURRENT_USER, PLAYERS, PUZZLE_TYPES } from "@/lib/seed-data";
-import { generatePipePuzzle, rotatePipeCell, checkPipeConnections, type PipeCell } from "@/lib/puzzle-engine";
-import type { MatchPhase, PuzzleType } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Clock, Home, RotateCcw, Share2, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import MatchPuzzleBoard from "@/components/match/MatchPuzzleBoard";
+import { apiRequest, getWebSocketUrl } from "@/lib/api-client";
+import type { BackendLobby, BackendLobbyPlayer, MatchMode, PuzzleSubmission } from "@/lib/backend";
+import { getRankColor } from "@/lib/seed-data";
+import { useAuth } from "@/providers/AuthProvider";
+
+function formatTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
+}
+
+function formatSolveTime(timeMs: number | null) {
+  if (timeMs === null) return "DNF";
+  return `${(timeMs / 1000).toFixed(1)}s`;
+}
+
+function rankPlayers(players: BackendLobbyPlayer[]) {
+  return [...players].sort((left, right) => {
+    if (right.progress !== left.progress) return right.progress - left.progress;
+    if (left.solvedAtMs === null && right.solvedAtMs === null) return 0;
+    if (left.solvedAtMs === null) return 1;
+    if (right.solvedAtMs === null) return -1;
+    return left.solvedAtMs - right.solvedAtMs;
+  });
+}
+
+async function postReady(lobbyId: string, token: string) {
+  return apiRequest<{ lobby: BackendLobby }>(`/api/lobbies/${lobbyId}/ready`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({}),
+  });
+}
 
 export default function MatchPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const mode = params.get("mode") || "ranked";
-  const puzzleType = (params.get("puzzle") || "rotate_pipes") as PuzzleType;
-  const puzzleMeta = PUZZLE_TYPES.find(p => p.type === puzzleType)!;
+  const mode = (params.get("mode") || "ranked") as MatchMode;
+  const { isReady, token, user, refreshUser } = useAuth();
 
-  const [phase, setPhase] = useState<MatchPhase>("lobby");
-  const [countdown, setCountdown] = useState(3);
-  const [timeLeft, setTimeLeft] = useState(90);
-  const [progress, setProgress] = useState(0);
-  const [opponentProgress, setOpponentProgress] = useState(0);
-  const [grid, setGrid] = useState<PipeCell[][]>([]);
-  const [isComplete, setIsComplete] = useState(false);
+  const [lobby, setLobby] = useState<BackendLobby | null>(null);
+  const [practiceSolved, setPracticeSolved] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now());
+  const [optimisticProgress, setOptimisticProgress] = useState(0);
+  const [rematchKey, setRematchKey] = useState(0);
 
-  const opponent = PLAYERS[1]; // CipherKing
-  const user = CURRENT_USER;
+  const readyTimeoutRef = useRef<number | null>(null);
+  const progressTimeoutRef = useRef<number | null>(null);
+  const lastSubmissionRef = useRef<PuzzleSubmission | null>(null);
+  const readySentLobbyIdRef = useRef<string | null>(null);
+  const completedLobbyIdRef = useRef<string | null>(null);
 
-  // Phase transitions
   useEffect(() => {
-    if (phase === "lobby") {
-      const t = setTimeout(() => setPhase("announcement"), 1500);
-      return () => clearTimeout(t);
-    }
-    if (phase === "announcement") {
-      const t = setTimeout(() => {
-        setPhase("practice");
-        setCountdown(10);
-      }, 2000);
-      return () => clearTimeout(t);
-    }
-    if (phase === "practice") {
-      if (countdown <= 0) {
-        setPhase("round");
-        setTimeLeft(90);
-        // Generate puzzle
-        const seed = Date.now() % 100000;
-        const g = generatePipePuzzle(seed, 5);
-        setGrid(checkPipeConnections(g));
-        return;
+    if (!isReady || !token || !user) return;
+
+    let cancelled = false;
+    setLobby(null);
+    setPracticeSolved(false);
+    setOptimisticProgress(0);
+    readySentLobbyIdRef.current = null;
+    completedLobbyIdRef.current = null;
+
+    void apiRequest<{ lobby: BackendLobby }>("/api/matchmaking/join", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ mode }),
+    }).then((response) => {
+      if (!cancelled) {
+        setLobby(response.lobby);
       }
-      const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-      return () => clearTimeout(t);
-    }
-  }, [phase, countdown]);
-
-  // Round timer
-  useEffect(() => {
-    if (phase !== "round" || isComplete) return;
-    if (timeLeft <= 0) {
-      setPhase("results");
-      return;
-    }
-    const t = setTimeout(() => setTimeLeft(s => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [phase, timeLeft, isComplete]);
-
-  // Simulate opponent progress
-  useEffect(() => {
-    if (phase !== "round" || isComplete) return;
-    const t = setInterval(() => {
-      setOpponentProgress(p => {
-        const next = p + Math.random() * 3;
-        if (next >= 100) {
-          clearInterval(t);
-          return 100;
-        }
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, [phase, isComplete]);
-
-  const handleCellClick = useCallback((r: number, c: number) => {
-    if (phase !== "round" || isComplete) return;
-    setGrid(prev => {
-      const newGrid = prev.map((row, ri) =>
-        row.map((cell, ci) => (ri === r && ci === c ? rotatePipeCell(cell) : cell))
-      );
-      const checked = checkPipeConnections(newGrid);
-
-      // Calculate progress
-      const total = checked.flat().filter(c => c.type !== "empty").length;
-      const connected = checked.flat().filter(c => c.isConnected).length;
-      const prog = Math.round((connected / total) * 100);
-      setProgress(prog);
-
-      if (prog >= 100) {
-        setIsComplete(true);
-        setTimeout(() => setPhase("results"), 1000);
-      }
-
-      return checked;
     });
-  }, [phase, isComplete]);
 
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [isReady, mode, rematchKey, token, user]);
 
-  // Lobby
-  if (phase === "lobby") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center space-y-4"
-        >
-          <motion.div
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="w-16 h-16 rounded-full border-2 border-ion mx-auto flex items-center justify-center"
-          >
-            <Swords size={28} className="text-ion" />
-          </motion.div>
-          <p className="font-display font-bold text-lg">Finding Opponent...</p>
-          <p className="text-xs text-muted-foreground font-body">Matching by ELO range</p>
-        </motion.div>
-      </div>
-    );
+  useEffect(() => {
+    if (!token || !lobby?.id) return;
+
+    const socket = new WebSocket(getWebSocketUrl(token));
+    socket.addEventListener("open", () => {
+      socket.send(JSON.stringify({ type: "subscribe_lobby", lobbyId: lobby.id }));
+    });
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data)) as { type: string; payload?: BackendLobby };
+      if (message.type === "lobby.snapshot" && message.payload?.id === lobby.id) {
+        setLobby(message.payload);
+      }
+    });
+
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "unsubscribe_lobby", lobbyId: lobby.id }));
+      }
+      socket.close();
+    };
+  }, [lobby?.id, token]);
+
+  useEffect(() => {
+    if (!lobby || lobby.status !== "ready" || !token) return;
+    if (readySentLobbyIdRef.current === lobby.id) return;
+
+    readyTimeoutRef.current = window.setTimeout(() => {
+      readySentLobbyIdRef.current = lobby.id;
+      void postReady(lobby.id, token);
+    }, 2200);
+
+    return () => {
+      if (readyTimeoutRef.current !== null) {
+        window.clearTimeout(readyTimeoutRef.current);
+      }
+    };
+  }, [lobby, token]);
+
+  useEffect(() => {
+    if (lobby?.status !== "practice" && lobby?.status !== "live") return;
+
+    const interval = window.setInterval(() => {
+      setClockNow(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [lobby?.status]);
+
+  useEffect(() => {
+    if (!lobby || lobby.status !== "complete") return;
+    if (completedLobbyIdRef.current === lobby.id) return;
+    completedLobbyIdRef.current = lobby.id;
+    void refreshUser();
+  }, [lobby, refreshUser]);
+
+  useEffect(() => {
+    if (lobby?.status !== "live") {
+      setOptimisticProgress(0);
+    }
+  }, [lobby?.status]);
+
+  const selfPlayer = lobby?.players.find((player) => player.playerId === user?.id) ?? null;
+  const rivals = useMemo(
+    () => lobby?.players.filter((player) => player.playerId !== user?.id) ?? [],
+    [lobby?.players, user?.id],
+  );
+  const standings = useMemo(() => rankPlayers(lobby?.players ?? []), [lobby?.players]);
+  const playerRank = standings.findIndex((player) => player.playerId === user?.id) + 1 || standings.length;
+  const selectionMeta = lobby?.selection?.meta ?? null;
+  const practiceTimeLeft = Math.max(
+    0,
+    Math.ceil(((lobby?.practiceEndsAt ? new Date(lobby.practiceEndsAt).getTime() : 0) - clockNow) / 1000),
+  );
+  const liveTimeLeft = Math.max(
+    0,
+    Math.ceil(((lobby?.liveEndsAt ? new Date(lobby.liveEndsAt).getTime() : 0) - clockNow) / 1000),
+  );
+
+  function queueProgressSubmission(stage: "practice" | "live", submission: PuzzleSubmission, progress: number) {
+    if (!token || !lobby) return;
+    lastSubmissionRef.current = submission;
+    if (stage === "live") {
+      setOptimisticProgress(progress);
+    }
+
+    if (progressTimeoutRef.current !== null) {
+      window.clearTimeout(progressTimeoutRef.current);
+    }
+
+    progressTimeoutRef.current = window.setTimeout(() => {
+      void apiRequest(`/api/lobbies/${lobby.id}/progress`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          stage,
+          submission,
+        }),
+      });
+    }, 180);
   }
 
-  // Announcement
-  if (phase === "announcement") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="text-center space-y-6 px-8"
-        >
-          <div className="flex items-center justify-center gap-8">
-            <div className="text-center">
-              <div className="w-14 h-14 rounded bg-secondary mx-auto flex items-center justify-center font-display font-bold text-xl">
-                {user.username[0]}
-              </div>
-              <p className="font-display font-semibold text-sm mt-2">{user.username}</p>
-              <p className="text-[10px] text-muted-foreground">{user.elo}</p>
-            </div>
-            <span className="font-display font-bold text-2xl text-ion">VS</span>
-            <div className="text-center">
-              <div className="w-14 h-14 rounded bg-secondary mx-auto flex items-center justify-center font-display font-bold text-xl">
-                {opponent.username[0]}
-              </div>
-              <p className="font-display font-semibold text-sm mt-2">{opponent.username}</p>
-              <p className="text-[10px] text-muted-foreground">{opponent.elo}</p>
-            </div>
-          </div>
-          <div>
-            <span className="text-3xl">{puzzleMeta.icon}</span>
-            <p className="font-display font-bold mt-2">{puzzleMeta.label}</p>
-          </div>
-        </motion.div>
-      </div>
-    );
+  function handleLiveSolve() {
+    if (!token || !lobby || !lastSubmissionRef.current) return;
+
+    void apiRequest(`/api/lobbies/${lobby.id}/solve`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        stage: "live",
+        submission: lastSubmissionRef.current,
+      }),
+    });
   }
 
-  // Practice countdown
-  if (phase === "practice") {
+  if (!isReady || !user || !lobby) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <p className="font-condensed text-xs uppercase tracking-widest text-muted-foreground">Get Ready</p>
-          <motion.p
-            key={countdown}
-            initial={{ scale: 2, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="font-display font-bold text-6xl text-ion"
-          >
-            {countdown}
-          </motion.p>
-          <p className="text-sm text-muted-foreground">{puzzleMeta.label} · 90s</p>
+      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="panel w-full max-w-md text-center">
+          <p className="hud-label text-primary">Connecting</p>
+          <h1 className="mt-2 text-2xl font-black">Preparing your arena session</h1>
         </div>
       </div>
     );
   }
 
-  // Results
-  if (phase === "results") {
-    const won = progress >= opponentProgress;
-    const eloChange = won ? 24 : -18;
+  if (lobby.status === "filling") {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring" }}
-          >
-            <p className={`font-display font-bold text-3xl ${won ? "text-ion" : "text-destructive"}`}>
-              {won ? "VICTORY" : "DEFEAT"}
+      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="panel w-full max-w-md space-y-6">
+          <div className="text-center">
+            <p className="hud-label text-primary">Matchmaking Lobby</p>
+            <h1 className="mt-1 text-3xl font-black">Filling Lobby</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Standard matches wait for 4 total players, then the lobby gets one randomly generated puzzle type.
             </p>
-          </motion.div>
+          </div>
 
-          <div className="flex gap-8 items-center">
-            <div className="text-center">
-              <p className="font-display font-semibold text-sm">{user.username}</p>
-              <p className="stat-value mt-1">{Math.round(progress)}%</p>
+          <div className="rounded-[28px] bg-background/35 p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <span className="font-hud text-xs uppercase tracking-[0.18em] text-muted-foreground">Players Joined</span>
+              <span className="text-lg font-black text-primary">{lobby.players.length}/4</span>
             </div>
-            <div className="font-display text-2xl text-muted-foreground">—</div>
-            <div className="text-center">
-              <p className="font-display font-semibold text-sm">{opponent.username}</p>
-              <p className="stat-value mt-1">{Math.round(opponentProgress)}%</p>
+            <div className="grid grid-cols-2 gap-3">
+              {Array.from({ length: 4 }, (_, index) => lobby.players[index] ?? null).map((player, index) => (
+                <div
+                  key={player?.playerId ?? `open-${index}`}
+                  className={`rounded-3xl border p-4 transition-all ${
+                    player
+                      ? "border-primary/20 bg-primary/10"
+                      : "border-dashed border-border bg-background/20 text-muted-foreground"
+                  }`}
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-lg font-black">
+                    {player ? player.username[0] : "?"}
+                  </div>
+                  <p className="mt-3 text-sm font-bold">{player ? player.username : "Searching..."}</p>
+                  <p className={`mt-1 text-[11px] font-hud uppercase tracking-[0.16em] ${
+                    player ? getRankColor(player.rank) : "text-muted-foreground"
+                  }`}>
+                    {player ? `${player.rank} ${player.elo}` : "open slot"}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="surface rounded p-4 w-full max-w-xs space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">ELO Change</span>
-              <span className={`font-display font-bold ${eloChange > 0 ? "text-ion" : "text-destructive"}`}>
-                {eloChange > 0 ? "+" : ""}{eloChange}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">XP Earned</span>
-              <span className="font-display font-bold">+{won ? 350 : 120}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Coins</span>
-              <span className="font-display font-bold">+{won ? 500 : 150}</span>
-            </div>
+          <div className="rounded-[28px] bg-card/70 p-4 text-center">
+            <p className="font-hud text-xs uppercase tracking-[0.18em] text-muted-foreground">Queue Rule</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              No player-selected puzzle type. The lobby decides together once the room is full.
+            </p>
           </div>
-
-          <div className="flex gap-3 w-full max-w-xs">
-            <button
-              onClick={() => navigate(`/match?mode=${mode}&puzzle=${puzzleType}`)}
-              className="flex-1 h-11 bg-ion text-primary-foreground font-display font-bold text-xs uppercase tracking-wider rounded flex items-center justify-center gap-2"
-            >
-              <RotateCcw size={14} />
-              Rematch
-            </button>
-            <button className="h-11 px-4 border border-border font-display text-xs uppercase tracking-wider rounded flex items-center gap-2 text-foreground font-semibold">
-              <Share2 size={14} />
-              Share
-            </button>
-          </div>
-
-          <button
-            onClick={() => navigate("/")}
-            className="text-xs text-muted-foreground font-body underline"
-          >
-            Back to Home
-          </button>
         </div>
       </div>
     );
   }
 
-  // Round (actual gameplay)
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Timer bar */}
-      <div className="px-4 pt-3 pb-2">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Clock size={14} className={timeLeft <= 10 ? "text-destructive animate-pulse-ion" : "text-ion"} />
-            <span className={`font-condensed font-bold text-lg tracking-tight ${timeLeft <= 10 ? "text-destructive" : "text-foreground"}`}>
-              {formatTime(timeLeft)}
-            </span>
-          </div>
-          <p className="text-[10px] font-condensed font-bold uppercase tracking-widest text-muted-foreground">
-            {puzzleMeta.label}
-          </p>
-        </div>
-        {/* Progress bars */}
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-condensed font-bold w-16 truncate">{user.username}</span>
-            <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-ion rounded-full"
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.3 }}
-              />
+  if (lobby.status === "ready" && selectionMeta) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="panel w-full max-w-md space-y-6"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="hud-label text-primary">Lobby Full</p>
+              <h1 className="mt-1 text-2xl font-black">Puzzle Selected</h1>
             </div>
-            <span className="text-[10px] font-condensed font-bold w-8 text-right">{Math.round(progress)}%</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-condensed font-bold w-16 truncate text-muted-foreground">{opponent.username}</span>
-            <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-muted-foreground rounded-full"
-                animate={{ width: `${opponentProgress}%` }}
-                transition={{ duration: 0.3 }}
-              />
+            <div className="rounded-2xl bg-primary/10 px-3 py-2 text-right">
+              <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">Lobby</p>
+              <p className="text-sm font-black">{lobby.id.slice(0, 8)}</p>
             </div>
-            <span className="text-[10px] font-condensed font-bold w-8 text-right text-muted-foreground">{Math.round(opponentProgress)}%</span>
           </div>
-        </div>
-      </div>
 
-      {/* Puzzle Grid */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${grid[0]?.length || 5}, 1fr)` }}>
-          {grid.map((row, r) =>
-            row.map((cell, c) => (
-              <motion.button
-                key={`${r}-${c}`}
-                onClick={() => handleCellClick(r, c)}
-                whileTap={{ scale: 0.9 }}
-                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-sm border flex items-center justify-center transition-colors ${
-                  cell.isSource || cell.isSink
-                    ? "border-ion bg-ion/10"
-                    : cell.isConnected
-                    ? "border-ion/50 bg-ion/5"
-                    : "border-border bg-card"
-                }`}
-              >
-                <svg
-                  viewBox="0 0 40 40"
-                  className={`w-10 h-10 ${cell.isConnected ? "text-ion" : "text-muted-foreground"}`}
-                  style={{ transform: `rotate(${cell.rotation}deg)` }}
-                >
-                  {cell.type === "straight" && (
-                    <line x1="20" y1="0" x2="20" y2="40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                  )}
-                  {cell.type === "corner" && (
-                    <path d="M20 0 L20 20 L40 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                  )}
-                  {cell.type === "tee" && (
-                    <>
-                      <line x1="20" y1="0" x2="20" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                      <line x1="0" y1="20" x2="40" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                    </>
-                  )}
-                  {cell.type === "end" && (
-                    <>
-                      <line x1="20" y1="0" x2="20" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                      <circle cx="20" cy="20" r="4" fill="currentColor" />
-                    </>
-                  )}
-                </svg>
-              </motion.button>
-            ))
+          <div className="grid grid-cols-4 gap-2">
+            {lobby.players.map((player) => (
+              <div key={player.playerId} className="rounded-2xl bg-background/35 p-3 text-center">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-2xl bg-card text-sm font-black">
+                  {player.username[0]}
+                </div>
+                <p className="mt-2 truncate text-[11px] font-bold">{player.username}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-[32px] border border-primary/20 bg-primary/10 p-6 text-center">
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-gradient-play text-5xl text-primary-foreground">
+              {selectionMeta.icon}
+            </div>
+            <p className="mt-4 text-2xl font-black">{selectionMeta.label}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{selectionMeta.description}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-2xl bg-background/35 p-3">
+                <p className="hud-label">Practice</p>
+                <p className="mt-1 text-sm font-black">12s warm-up</p>
+              </div>
+              <div className="rounded-2xl bg-background/35 p-3">
+                <p className="hud-label">Live</p>
+                <p className="mt-1 text-sm font-black">new generated version</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (lobby.status === "practice" && lobby.selection) {
+    return (
+      <div className="flex min-h-screen flex-col px-4 py-6">
+        <div className="panel">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="hud-label text-primary">Practice Round</p>
+              <h1 className="mt-1 text-2xl font-black">{lobby.selection.meta.label}</h1>
+              <p className="mt-2 text-sm text-muted-foreground">{lobby.selection.meta.description}</p>
+            </div>
+            <div className="rounded-2xl bg-primary/10 px-4 py-3 text-center">
+              <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">Time Left</p>
+              <p className="text-3xl font-black text-primary">{practiceTimeLeft}</p>
+            </div>
+          </div>
+          {practiceSolved && (
+            <div className="mt-4 rounded-2xl bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
+              Practice solve locked in. A different generated version loads when the timer ends.
+            </div>
           )}
         </div>
+
+        <div className="panel mt-4 flex-1">
+          <MatchPuzzleBoard
+            key={`practice-${lobby.selection.practiceSeed}`}
+            puzzleType={lobby.selection.puzzleType}
+            seed={lobby.selection.practiceSeed}
+            difficulty={lobby.selection.difficulty}
+            isPractice
+            disabled={false}
+            onProgress={() => {}}
+            onStateChange={(submission, progress) => queueProgressSubmission("practice", submission, progress)}
+            onSolve={() => setPracticeSolved(true)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (lobby.status === "complete") {
+    const results = lobby.results?.standings ?? standings.map((player, index) => ({
+      playerId: player.playerId,
+      username: player.username,
+      progress: player.progress,
+      solvedAtMs: player.solvedAtMs,
+      rank: index + 1,
+      reward: player.reward ?? { xp: 90, coins: 140, elo: -16 },
+      isBot: player.isBot,
+    }));
+    const selfResult = results.find((entry) => entry.playerId === user.id);
+
+    return (
+      <div className="flex min-h-screen flex-col justify-center px-4 py-6">
+        <div className="space-y-4">
+          <div className="text-center">
+            <div className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
+              (selfResult?.rank ?? playerRank) === 1 ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
+            }`}>
+              <Sparkles size={30} />
+            </div>
+            <p className="mt-4 text-3xl font-black">Rank #{selfResult?.rank ?? playerRank}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {selectionMeta?.label} live match finished with a fresh generated seed.
+            </p>
+          </div>
+
+          <div className="panel space-y-3">
+            {results.map((entry) => (
+              <div
+                key={entry.playerId}
+                className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${
+                  entry.playerId === user.id ? "bg-primary/10" : "bg-background/30"
+                }`}
+              >
+                <div className="w-10 text-center font-hud text-sm font-semibold">#{entry.rank}</div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-card text-sm font-black">
+                  {entry.username[0]}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold">{entry.username}{entry.playerId === user.id ? " (You)" : ""}</p>
+                  <p className="text-[11px] font-hud uppercase tracking-[0.16em] text-muted-foreground">
+                    {entry.progress}% complete - {formatSolveTime(entry.solvedAtMs)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="panel space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">XP Earned</span>
+              <span className="font-black">+{selfResult?.reward.xp ?? 0}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Coins Earned</span>
+              <span className="font-black">+{selfResult?.reward.coins ?? 0}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">ELO Change</span>
+              <span className={(selfResult?.reward.elo ?? 0) >= 0 ? "font-black text-primary" : "font-black text-destructive"}>
+                {(selfResult?.reward.elo ?? 0) >= 0 ? "+" : ""}{selfResult?.reward.elo ?? 0}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button onClick={() => setRematchKey((current) => current + 1)} variant="play" size="lg" className="flex-1">
+              <RotateCcw size={16} />
+              Play Again
+            </Button>
+            <Button variant="outline" size="lg">
+              <Share2 size={16} />
+              Share
+            </Button>
+          </div>
+
+          <Button onClick={() => navigate("/")} variant="outline" size="lg" className="w-full">
+            <Home size={16} />
+            Back Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!lobby.selection || !selfPlayer) {
+    return null;
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col px-4 py-4">
+      <div className="panel space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{lobby.selection.meta.icon}</span>
+            <div>
+              <p className="hud-label">Live Match</p>
+              <p className="text-sm font-bold">{lobby.selection.meta.label}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock size={16} className={liveTimeLeft <= 10 ? "text-destructive" : "text-primary"} />
+            <span className={`font-hud text-2xl font-bold ${liveTimeLeft <= 10 ? "text-destructive" : "text-primary"}`}>
+              {formatTime(liveTimeLeft)}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-2xl bg-primary/10 px-3 py-2">
+            <span className="w-20 truncate text-xs font-hud uppercase tracking-[0.14em] text-muted-foreground">You</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <motion.div className="h-full rounded-full bg-primary" animate={{ width: `${Math.max(selfPlayer.progress, optimisticProgress)}%` }} />
+            </div>
+            <span className="w-10 text-right text-xs font-hud text-primary">{Math.round(Math.max(selfPlayer.progress, optimisticProgress))}%</span>
+          </div>
+
+          {rivals.map((rival) => (
+            <div key={rival.playerId} className="flex items-center gap-2 rounded-2xl bg-background/30 px-3 py-2">
+              <span className="w-20 truncate text-xs font-hud uppercase tracking-[0.14em] text-muted-foreground">
+                {rival.username}
+              </span>
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                <motion.div className="h-full rounded-full bg-accent" animate={{ width: `${rival.progress}%` }} />
+              </div>
+              <span className="w-10 text-right text-xs font-hud text-muted-foreground">{Math.round(rival.progress)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel mt-4 flex-1">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="hud-label">New Live Variation</p>
+            <p className="mt-1 text-lg font-black">Same puzzle type, new generated layout</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Practice and live always share the puzzle type but never the exact same seed.
+            </p>
+          </div>
+          <div className="rounded-2xl bg-background/35 px-3 py-2 text-center">
+            <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Players</p>
+            <p className="text-lg font-black">{lobby.players.length}</p>
+          </div>
+        </div>
+
+        <MatchPuzzleBoard
+          key={`live-${lobby.selection.liveSeed}`}
+          puzzleType={lobby.selection.puzzleType}
+          seed={lobby.selection.liveSeed}
+          difficulty={lobby.selection.difficulty}
+          isPractice={false}
+          disabled={selfPlayer.solvedAtMs !== null}
+          onProgress={() => {}}
+          onStateChange={(submission, progress) => queueProgressSubmission("live", submission, progress)}
+          onSolve={handleLiveSolve}
+        />
       </div>
     </div>
   );

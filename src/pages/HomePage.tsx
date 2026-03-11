@@ -1,46 +1,56 @@
 import { motion } from "framer-motion";
-import { Play, Eye, ChevronRight, Flame, Bell } from "lucide-react";
+import { Play, Eye, ChevronRight, Flame, Bell, Crown, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { CURRENT_USER, PLAYERS, DAILY_CHALLENGES, NOTIFICATIONS, getRankBand, getRankColor } from "@/lib/seed-data";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/providers/AuthProvider";
+import {
+  PLAYERS,
+  DAILY_CHALLENGES,
+  NOTIFICATIONS,
+  LEADERBOARD,
+  getRankBand,
+  getRankColor,
+} from "@/lib/seed-data";
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const topPlayer = PLAYERS.find(p => p.id === "u_6")!;
-  const user = CURRENT_USER;
+  const topPlayer = PLAYERS.find((p) => p.id === "u_6")!;
+  const { user: authenticatedUser } = useAuth();
+  const user = authenticatedUser ?? PLAYERS[0];
   const rankBand = getRankBand(user.elo);
-  const unreadNotifs = NOTIFICATIONS.filter(n => !n.isRead).length;
+  const unreadNotifs = NOTIFICATIONS.filter((n) => !n.isRead).length;
+  const featuredPlayers = LEADERBOARD.slice(0, 3);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+    <div className="space-y-4 px-4 pt-6">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-secondary flex items-center justify-center font-display font-bold text-sm">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-prestige text-lg font-black text-white shadow-[0_16px_40px_rgba(127,72,255,0.4)]">
             {user.username[0]}
           </div>
           <div>
-            <p className="font-display font-semibold text-sm leading-none">{user.username}</p>
-            <p className={`text-[10px] font-condensed font-bold uppercase tracking-wider ${getRankColor(user.rank)}`}>
+            <p className="text-sm font-bold leading-none">{user.username}</p>
+            <p className={`mt-1 text-[11px] font-hud font-semibold uppercase tracking-[0.2em] ${getRankColor(user.rank)}`}>
               {rankBand.label}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-xs font-body">
-            <span className="text-muted-foreground">🪙</span>
-            <span className="font-semibold">{user.coins.toLocaleString()}</span>
+        <div className="flex items-center gap-2">
+          <div className="currency-chip">
+            <span>🪙</span>
+            <span className="text-coin">{user.coins.toLocaleString()}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-body">
-            <span className="text-muted-foreground">💎</span>
-            <span className="font-semibold">{user.gems}</span>
+          <div className="currency-chip">
+            <span>💎</span>
+            <span>{user.gems}</span>
           </div>
           <button
             onClick={() => navigate("/profile")}
-            className="relative p-1.5"
+            className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card/80 text-muted-foreground"
           >
-            <Bell size={18} className="text-muted-foreground" />
+            <Bell size={18} />
             {unreadNotifs > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-ion text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-black text-primary-foreground">
                 {unreadNotifs}
               </span>
             )}
@@ -48,17 +58,18 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Match of the Day - Hero */}
-      <div className="relative flex-1 min-h-[50vh] bg-card flex flex-col justify-end p-4">
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent z-10" />
-
-        {/* Simulated replay grid */}
+      <motion.section
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="panel relative overflow-hidden p-5"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(191,255,0,0.18),_transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent)]" />
         <div className="absolute inset-0 flex items-center justify-center opacity-20">
-          <div className="grid grid-cols-5 gap-1 p-8">
+          <div className="grid grid-cols-5 gap-2 p-8">
             {Array.from({ length: 25 }).map((_, i) => (
               <motion.div
                 key={i}
-                className="w-8 h-8 border border-border rounded-sm"
+                className="h-8 w-8 rounded-lg border border-border"
                 animate={{ opacity: [0.2, 0.6, 0.2] }}
                 transition={{ duration: 2, delay: i * 0.15, repeat: Infinity }}
               />
@@ -66,91 +77,173 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="relative z-20 space-y-4">
-          <div className="flex items-center gap-2">
-            <Eye size={14} className="text-ion" />
-            <span className="text-[10px] font-condensed font-bold uppercase tracking-widest text-ion">Match of the Day</span>
+        <div className="relative z-10 space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Eye size={14} className="text-primary" />
+              <span className="hud-label text-primary">Match of the Day</span>
+            </div>
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 font-hud text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+              Live Replay
+            </span>
           </div>
 
           <div>
-            <p className="font-display font-bold text-xl">{topPlayer.username}</p>
-            <p className={`text-xs font-condensed font-bold uppercase tracking-wider ${getRankColor(topPlayer.rank)}`}>
-              Master · ELO {topPlayer.elo}
+            <p className="text-3xl font-black tracking-tight">PUZZLE RIVALS</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Keep the current game systems, but present them with the sharper arena-style dashboard from the alternate build.
             </p>
           </div>
 
-          <p className="text-xs text-muted-foreground font-body leading-relaxed">
-            Solved a Difficulty V Pipe Flow puzzle in 23.4s. Watch the replay to see how the #1 player thinks.
-          </p>
+          <div className="grid grid-cols-[auto,1fr] items-center gap-3 rounded-2xl border border-white/5 bg-background/30 p-3 backdrop-blur-sm">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-prestige text-xl font-black text-white">
+              {topPlayer.username[0]}
+            </div>
+            <div>
+              <p className="text-sm font-bold">{topPlayer.username}</p>
+              <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.18em] ${getRankColor(topPlayer.rank)}`}>
+                Master · ELO {topPlayer.elo}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Solved a Difficulty V Pipe Flow in 23.4s. Replay the run or queue into your own duel.
+              </p>
+            </div>
+          </div>
 
           <div className="flex gap-3">
-            <button
-              onClick={() => navigate("/play")}
-              className="flex-1 h-12 bg-ion text-primary-foreground font-display font-bold text-sm uppercase tracking-wider rounded flex items-center justify-center gap-2 glow-ion"
-            >
-              <Play size={16} fill="currentColor" />
+            <Button onClick={() => navigate("/match?mode=ranked")} variant="play" size="xl" className="flex-1">
+              <Play size={18} fill="currentColor" />
               Play Now
-            </button>
-            <button className="h-12 px-4 border border-border font-display font-semibold text-xs uppercase tracking-wider rounded flex items-center gap-2 text-foreground">
-              <Eye size={14} />
+            </Button>
+            <Button variant="outline" size="xl" className="px-5">
+              <Eye size={16} />
               Watch
-            </button>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-2xl bg-background/40 p-3">
+              <p className="hud-label">Mode</p>
+              <p className="mt-1 text-sm font-black">Ranked</p>
+            </div>
+            <div className="rounded-2xl bg-background/40 p-3">
+              <p className="hud-label">Focus</p>
+              <p className="mt-1 text-sm font-black">AI Pool</p>
+            </div>
+            <div className="rounded-2xl bg-background/40 p-3">
+              <p className="hud-label">Season</p>
+              <p className="mt-1 text-sm font-black">XI</p>
+            </div>
           </div>
         </div>
-      </div>
+      </motion.section>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-3 border-t border-border">
-        <div className="p-4 text-center border-r border-border">
-          <p className="stat-value text-ion">{user.winStreak}</p>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="panel text-center">
+          <p className="stat-value text-primary">{user.winStreak}</p>
           <p className="stat-label">Streak</p>
         </div>
-        <div className="p-4 text-center border-r border-border">
+        <div className="panel text-center">
           <p className="stat-value">{Math.round((user.wins / user.matchesPlayed) * 100)}%</p>
           <p className="stat-label">Win Rate</p>
         </div>
-        <div className="p-4 text-center">
+        <div className="panel text-center">
           <p className="stat-value">{user.matchesPlayed}</p>
           <p className="stat-label">Matches</p>
         </div>
       </div>
 
-      {/* Daily Challenge */}
-      {DAILY_CHALLENGES.filter(d => !d.isCompleted).map(challenge => (
+      {DAILY_CHALLENGES.filter((d) => !d.isCompleted).map((challenge) => (
         <button
           key={challenge.id}
-          onClick={() => navigate("/play")}
-          className="m-4 surface-interactive rounded p-4 flex items-center gap-4 text-left"
+          onClick={() => navigate("/match?mode=daily")}
+          className="panel-interactive w-full text-left"
         >
-          <div className="w-12 h-12 rounded bg-secondary flex items-center justify-center">
-            <Flame size={24} className="text-ion" />
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Flame size={26} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="hud-label text-primary">Daily Challenge</p>
+              <p className="mt-1 text-base font-bold">{challenge.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{challenge.description}</p>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-hud font-semibold uppercase tracking-[0.16em]">
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-primary">+{challenge.reward.xp} XP</span>
+                <span className="rounded-full bg-accent/12 px-2.5 py-1 text-accent">+{challenge.reward.coins} Coins</span>
+              </div>
+            </div>
+            <ChevronRight size={16} className="text-muted-foreground" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-display font-bold text-sm">{challenge.title}</p>
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">{challenge.description}</p>
-            <p className="text-[10px] text-ion font-condensed font-bold uppercase tracking-wider mt-1">
-              +{challenge.reward.xp} XP · +{challenge.reward.coins} Coins
-            </p>
-          </div>
-          <ChevronRight size={16} className="text-muted-foreground flex-shrink-0" />
         </button>
       ))}
 
-      {/* Streak Reward */}
-      <div className="mx-4 mb-4 surface rounded p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="font-display font-bold text-sm">Daily Streak</p>
-          <p className="text-ion font-condensed font-bold text-sm">{user.winStreak} days</p>
+      <section className="panel">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="hud-label">Ladder Snapshot</p>
+            <h2 className="mt-1 text-lg font-black">Top Arena Players</h2>
+          </div>
+          <button
+            onClick={() => navigate("/tournaments")}
+            className="rounded-full border border-border px-3 py-1.5 font-hud text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+          >
+            View More
+          </button>
         </div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5, 6, 7].map(day => (
-            <div
-              key={day}
-              className={`flex-1 h-1.5 rounded-full ${day <= user.winStreak ? "bg-ion" : "bg-secondary"}`}
-            />
+
+        <div className="mt-4 space-y-3">
+          {featuredPlayers.map((entry, index) => (
+            <div key={entry.userId} className="flex items-center gap-3 rounded-2xl bg-background/35 p-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-prestige text-sm font-black text-white">
+                {entry.username[0]}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">{entry.username}</p>
+                <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.18em] ${getRankColor(entry.rankTier)}`}>
+                  {entry.rankTier}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-black text-primary">#{index + 1}</p>
+                <p className="text-[11px] font-hud text-muted-foreground">{entry.elo} ELO</p>
+              </div>
+            </div>
           ))}
         </div>
-      </div>
+      </section>
+
+      <section className="panel overflow-hidden">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="hud-label">Consistency Bonus</p>
+            <h2 className="mt-1 text-lg font-black">Daily Streak</h2>
+          </div>
+          <Sparkles size={18} className="text-accent" />
+        </div>
+        <div className="mt-4 flex items-center justify-between rounded-2xl bg-background/35 px-4 py-3">
+          <div>
+            <p className="text-sm font-bold">{user.winStreak} Day Run</p>
+            <p className="text-sm text-muted-foreground">Keep winning to unlock higher streak rewards.</p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-prestige text-lg text-white">
+            <Crown size={20} />
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-7 gap-2">
+          {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+            <div
+              key={day}
+              className={`flex h-12 items-center justify-center rounded-2xl border text-sm font-black ${
+                day <= user.winStreak
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-border bg-background/25 text-muted-foreground"
+              }`}
+            >
+              {day}
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

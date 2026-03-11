@@ -1,0 +1,814 @@
+import { useEffect, useState } from "react";
+import {
+  SeededRandom,
+  checkPipeConnections,
+  generatePipePuzzle,
+  rotatePipeCell,
+  type PipeCell,
+} from "@/lib/puzzle-engine";
+import type { MatchPlayablePuzzleType } from "@/lib/ai-puzzle-service";
+import type { PuzzleSubmission } from "@/lib/backend";
+
+interface MatchPuzzleBoardProps {
+  puzzleType: MatchPlayablePuzzleType;
+  seed: number;
+  difficulty: 1 | 2 | 3 | 4 | 5;
+  isPractice: boolean;
+  disabled: boolean;
+  onSolve: () => void;
+  onProgress: (progress: number) => void;
+  onStateChange?: (submission: PuzzleSubmission, progress: number) => void;
+}
+
+interface NumberGridPuzzle {
+  size: number;
+  grid: (number | null)[];
+  solution: number[];
+  rowSums: number[];
+  colSums: number[];
+}
+
+type PatternShape = "circle" | "square" | "triangle" | "diamond";
+
+interface PatternItem {
+  shape: PatternShape;
+  color: string;
+}
+
+interface PatternRound {
+  pattern: PatternItem[];
+  missingIndex: number;
+  options: PatternItem[];
+  correctOption: number;
+}
+
+interface SudokuPuzzle {
+  puzzle: (number | null)[];
+  solution: number[];
+}
+
+const WORD_BANK = [
+  "BRAIN", "SPEED", "QUICK", "FLASH", "POWER", "SMART", "BLAZE", "STORM",
+  "CLASH", "RIVAL", "CROWN", "DREAM", "FLAME", "GLEAM", "HEART", "JOLTS",
+  "KNACK", "LEMON", "MANGO", "NERVE", "ORBIT", "PRISM", "QUEST", "REIGN",
+  "PIXEL", "DRIFT", "SPARK", "CHASE", "PULSE", "TIGER", "GIANT", "NOBLE",
+];
+
+const PATTERN_SHAPES: PatternShape[] = ["circle", "square", "triangle", "diamond"];
+const PATTERN_COLORS = [
+  "hsl(72 100% 50%)",
+  "hsl(269 100% 58%)",
+  "hsl(0 100% 65%)",
+  "hsl(200 100% 60%)",
+  "hsl(45 100% 55%)",
+];
+
+function clampProgress(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function buildNumberGrid(seed: number, difficulty: number): NumberGridPuzzle {
+  const rng = new SeededRandom(seed);
+  const size = 3;
+  const solution = rng.shuffle(Array.from({ length: 9 }, (_, index) => index + 1));
+  const rowSums = Array.from({ length: size }, (_, row) =>
+    solution.slice(row * size, row * size + size).reduce((sum, value) => sum + value, 0),
+  );
+  const colSums = Array.from({ length: size }, (_, col) =>
+    Array.from({ length: size }, (_, row) => solution[row * size + col]).reduce((sum, value) => sum + value, 0),
+  );
+  const removeCount = Math.min(6, 3 + difficulty);
+  const blankIndices = rng.shuffle(Array.from({ length: size * size }, (_, index) => index)).slice(0, removeCount);
+  const blankSet = new Set(blankIndices);
+  const grid = solution.map((value, index) => (blankSet.has(index) ? null : value));
+
+  return { size, grid, solution, rowSums, colSums };
+}
+
+function buildPatternRound(rng: SeededRandom): PatternRound {
+  const rowShapes = rng.shuffle([...PATTERN_SHAPES]).slice(0, 3);
+  const colColors = rng.shuffle([...PATTERN_COLORS]).slice(0, 3);
+  const pattern: PatternItem[] = [];
+
+  for (let row = 0; row < 3; row += 1) {
+    for (let col = 0; col < 3; col += 1) {
+      pattern.push({ shape: rowShapes[row], color: colColors[col] });
+    }
+  }
+
+  const missingIndex = rng.nextInt(0, pattern.length - 1);
+  const correct = pattern[missingIndex];
+  const options: PatternItem[] = [correct];
+
+  while (options.length < 4) {
+    const candidate = {
+      shape: PATTERN_SHAPES[rng.nextInt(0, PATTERN_SHAPES.length - 1)],
+      color: PATTERN_COLORS[rng.nextInt(0, PATTERN_COLORS.length - 1)],
+    };
+
+    if (!options.some((option) => option.shape === candidate.shape && option.color === candidate.color)) {
+      options.push(candidate);
+    }
+  }
+
+  const shuffledOptions = rng.shuffle(options);
+  const correctOption = shuffledOptions.findIndex(
+    (option) => option.shape === correct.shape && option.color === correct.color,
+  );
+
+  return {
+    pattern,
+    missingIndex,
+    options: shuffledOptions,
+    correctOption,
+  };
+}
+
+function buildPatternRounds(seed: number, difficulty: number) {
+  const rng = new SeededRandom(seed);
+  const totalRounds = Math.min(5, Math.max(3, difficulty + 1));
+  return Array.from({ length: totalRounds }, () => buildPatternRound(rng));
+}
+
+function buildWordScramble(seed: number, difficulty: number) {
+  const rng = new SeededRandom(seed);
+  const minLength = difficulty >= 4 ? 6 : 5;
+  const candidateWords = WORD_BANK.filter((word) => word.length >= minLength);
+  const targetWord = candidateWords[rng.nextInt(0, candidateWords.length - 1)];
+  const letters = targetWord.split("");
+  let scrambled = rng.shuffle(letters);
+
+  if (scrambled.join("") === targetWord) {
+    scrambled = [...scrambled];
+    [scrambled[0], scrambled[1]] = [scrambled[1], scrambled[0]];
+  }
+
+  return { targetWord, scrambled };
+}
+
+function buildTilePuzzle(seed: number, difficulty: number) {
+  const rng = new SeededRandom(seed);
+  const size = 3;
+  const tiles = [...Array.from({ length: size * size - 1 }, (_, index) => index + 1), 0];
+  let emptyIndex = tiles.length - 1;
+  const scrambleMoves = 24 + difficulty * 8;
+
+  for (let step = 0; step < scrambleMoves; step += 1) {
+    const row = Math.floor(emptyIndex / size);
+    const col = emptyIndex % size;
+    const neighbors: number[] = [];
+
+    if (row > 0) neighbors.push(emptyIndex - size);
+    if (row < size - 1) neighbors.push(emptyIndex + size);
+    if (col > 0) neighbors.push(emptyIndex - 1);
+    if (col < size - 1) neighbors.push(emptyIndex + 1);
+
+    const swapIndex = neighbors[rng.nextInt(0, neighbors.length - 1)];
+    [tiles[emptyIndex], tiles[swapIndex]] = [tiles[swapIndex], tiles[emptyIndex]];
+    emptyIndex = swapIndex;
+  }
+
+  return { size, tiles };
+}
+
+function buildSudokuMini(seed: number, difficulty: number): SudokuPuzzle {
+  const rng = new SeededRandom(seed);
+  const solution = new Array(16).fill(0);
+
+  function isValid(grid: number[], position: number, value: number) {
+    const row = Math.floor(position / 4);
+    const col = position % 4;
+
+    for (let c = 0; c < 4; c += 1) {
+      if (grid[row * 4 + c] === value) return false;
+    }
+
+    for (let r = 0; r < 4; r += 1) {
+      if (grid[r * 4 + col] === value) return false;
+    }
+
+    const boxRow = Math.floor(row / 2) * 2;
+    const boxCol = Math.floor(col / 2) * 2;
+    for (let r = boxRow; r < boxRow + 2; r += 1) {
+      for (let c = boxCol; c < boxCol + 2; c += 1) {
+        if (grid[r * 4 + c] === value) return false;
+      }
+    }
+
+    return true;
+  }
+
+  function fill(position: number): boolean {
+    if (position === 16) return true;
+    const numbers = rng.shuffle([1, 2, 3, 4]);
+
+    for (const value of numbers) {
+      if (isValid(solution, position, value)) {
+        solution[position] = value;
+        if (fill(position + 1)) return true;
+        solution[position] = 0;
+      }
+    }
+
+    return false;
+  }
+
+  fill(0);
+
+  const givens = Math.max(6, 10 - difficulty);
+  const removable = rng.shuffle(Array.from({ length: 16 }, (_, index) => index)).slice(0, 16 - givens);
+  const removableSet = new Set(removable);
+  const puzzle = solution.map((value, index) => (removableSet.has(index) ? null : value));
+  return { puzzle, solution };
+}
+
+function isTilePuzzleSolved(tiles: number[]) {
+  for (let index = 0; index < tiles.length - 1; index += 1) {
+    if (tiles[index] !== index + 1) return false;
+  }
+
+  return tiles[tiles.length - 1] === 0;
+}
+
+function PatternIcon({ item }: { item: PatternItem }) {
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      {item.shape === "circle" && <circle cx="20" cy="20" r="16" fill={item.color} />}
+      {item.shape === "square" && <rect x="4" y="4" width="32" height="32" rx="4" fill={item.color} />}
+      {item.shape === "triangle" && <polygon points="20,4 36,36 4,36" fill={item.color} />}
+      {item.shape === "diamond" && <polygon points="20,2 38,20 20,38 2,20" fill={item.color} />}
+    </svg>
+  );
+}
+
+function RotatePipesBoard(props: Omit<MatchPuzzleBoardProps, "puzzleType">) {
+  const size = props.difficulty >= 4 ? 5 : 4;
+  const [grid, setGrid] = useState(() => checkPipeConnections(generatePipePuzzle(props.seed, size)));
+  const [solved, setSolved] = useState(false);
+
+  useEffect(() => {
+    const total = grid.flat().filter((cell) => cell.type !== "empty").length;
+    const connected = grid.flat().filter((cell) => cell.isConnected).length;
+    const progress = clampProgress((connected / Math.max(total, 1)) * 100);
+    props.onProgress(progress);
+    props.onStateChange?.({
+      kind: "rotate_pipes",
+      rotations: grid.flat().map((cell) => cell.rotation),
+    }, progress);
+  }, [grid, props]);
+
+  function handleRotate(rowIndex: number, colIndex: number) {
+    if (props.disabled || solved) return;
+
+    setGrid((currentGrid) => {
+      const rotated = currentGrid.map((row, r) =>
+        row.map((cell, c) => (r === rowIndex && c === colIndex ? rotatePipeCell(cell) : cell)),
+      );
+      const checked = checkPipeConnections(rotated);
+      const total = checked.flat().filter((cell) => cell.type !== "empty").length;
+      const connected = checked.flat().filter((cell) => cell.isConnected).length;
+      const progress = clampProgress((connected / Math.max(total, 1)) * 100);
+
+      if (progress >= 100) {
+        setSolved(true);
+        setTimeout(props.onSolve, 250);
+      }
+
+      return checked;
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      {props.isPractice && (
+        <p className="text-center font-hud text-sm text-muted-foreground">
+          Rotate tiles until the source path connects cleanly to the sink.
+        </p>
+      )}
+      <div className="grid gap-2 rounded-[28px] bg-card/70 p-3" style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}>
+        {grid.map((row, rowIndex) =>
+          row.map((cell, colIndex) => (
+            <button
+              key={`${rowIndex}-${colIndex}`}
+              onClick={() => handleRotate(rowIndex, colIndex)}
+              disabled={props.disabled || solved}
+              className={`flex h-14 w-14 items-center justify-center rounded-2xl border transition-all active:scale-95 sm:h-16 sm:w-16 ${
+                cell.isSource || cell.isSink
+                  ? "border-primary/40 bg-primary/10"
+                  : cell.isConnected
+                    ? "border-primary/25 bg-primary/5"
+                    : "border-border bg-background/30"
+              }`}
+            >
+              <PipeGlyph cell={cell} />
+            </button>
+          )),
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PipeGlyph({ cell }: { cell: PipeCell }) {
+  return (
+    <svg
+      viewBox="0 0 40 40"
+      className={`h-10 w-10 ${cell.isConnected ? "text-primary" : "text-muted-foreground"}`}
+      style={{ transform: `rotate(${cell.rotation}deg)` }}
+    >
+      {cell.type === "straight" && (
+        <line x1="20" y1="0" x2="20" y2="40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      )}
+      {cell.type === "corner" && (
+        <path d="M20 0 L20 20 L40 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+      {cell.type === "tee" && (
+        <>
+          <line x1="20" y1="0" x2="20" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          <line x1="0" y1="20" x2="40" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </>
+      )}
+      {cell.type === "cross" && (
+        <>
+          <line x1="20" y1="0" x2="20" y2="40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          <line x1="0" y1="20" x2="40" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </>
+      )}
+      {cell.type === "end" && (
+        <>
+          <line x1="20" y1="0" x2="20" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="20" cy="20" r="4" fill="currentColor" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function NumberGridBoard(props: Omit<MatchPuzzleBoardProps, "puzzleType">) {
+  const [puzzle] = useState(() => buildNumberGrid(props.seed, props.difficulty));
+  const [values, setValues] = useState<(number | null)[]>(puzzle.grid);
+  const [solved, setSolved] = useState(false);
+
+  useEffect(() => {
+    const correctCount = values.filter((value, index) => value === puzzle.solution[index]).length;
+    const progress = clampProgress((correctCount / puzzle.solution.length) * 100);
+    props.onProgress(progress);
+    props.onStateChange?.({
+      kind: "number_grid",
+      values,
+    }, progress);
+  }, [puzzle.solution, props, values]);
+
+  function handleChange(index: number, nextValue: string) {
+    if (props.disabled || solved) return;
+    const parsed = nextValue === "" ? null : Math.min(9, Math.max(1, Number.parseInt(nextValue, 10) || 0));
+
+    setValues((currentValues) => {
+      const nextValues = [...currentValues];
+      nextValues[index] = parsed;
+      const filled = nextValues.every((value) => value !== null);
+      const correct = nextValues.every((value, valueIndex) => value === puzzle.solution[valueIndex]);
+
+      if (filled && correct) {
+        setSolved(true);
+        setTimeout(props.onSolve, 250);
+      }
+
+      return nextValues;
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      {props.isPractice && (
+        <p className="text-center font-hud text-sm text-muted-foreground">
+          Fill the blanks so every row and column matches its target sum.
+        </p>
+      )}
+      <div className="rounded-[28px] bg-card/70 p-3">
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${puzzle.size + 1}, 1fr)` }}>
+          {Array.from({ length: puzzle.size }, (_, row) => (
+            <div key={row} className="contents">
+              {Array.from({ length: puzzle.size }, (_, col) => {
+                const index = row * puzzle.size + col;
+                const isGiven = puzzle.grid[index] !== null;
+
+                return (
+                  <div key={index} className="flex h-14 w-14 items-center justify-center">
+                    {isGiven ? (
+                      <div className="flex h-full w-full items-center justify-center rounded-2xl bg-secondary text-lg font-black">
+                        {values[index]}
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        min={1}
+                        max={9}
+                        value={values[index] ?? ""}
+                        onChange={(event) => handleChange(index, event.target.value)}
+                        disabled={props.disabled || solved}
+                        className="h-full w-full rounded-2xl border border-primary/20 bg-background/30 text-center text-lg font-black outline-none focus:border-primary"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex h-14 w-14 items-center justify-center font-hud text-xs font-semibold text-primary">
+                ={puzzle.rowSums[row]}
+              </div>
+            </div>
+          ))}
+          {Array.from({ length: puzzle.size }, (_, col) => (
+            <div key={`col-${col}`} className="flex h-14 w-14 items-center justify-center font-hud text-xs font-semibold text-primary">
+              ={puzzle.colSums[col]}
+            </div>
+          ))}
+          <div />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PatternMatchBoard(props: Omit<MatchPuzzleBoardProps, "puzzleType">) {
+  const [rounds] = useState(() => buildPatternRounds(props.seed, props.difficulty));
+  const [roundIndex, setRoundIndex] = useState(0);
+  const [answers, setAnswers] = useState<number[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<"correct" | "wrong" | null>(null);
+
+  const currentRound = rounds[roundIndex];
+
+  useEffect(() => {
+    const progress = clampProgress((answers.length / rounds.length) * 100);
+    props.onProgress(progress);
+    props.onStateChange?.({
+      kind: "pattern_match",
+      answers,
+    }, progress);
+  }, [answers, props, rounds.length]);
+
+  function handleSelect(optionIndex: number) {
+    if (props.disabled || selectedIndex !== null) return;
+    setSelectedIndex(optionIndex);
+
+    if (optionIndex === currentRound.correctOption) {
+      setFeedback("correct");
+      setAnswers((current) => [...current, optionIndex]);
+
+      if (roundIndex === rounds.length - 1) {
+        props.onProgress(100);
+        setTimeout(props.onSolve, 300);
+        return;
+      }
+
+      setTimeout(() => {
+        setRoundIndex((current) => current + 1);
+        setSelectedIndex(null);
+        setFeedback(null);
+      }, 350);
+      return;
+    }
+
+    setFeedback("wrong");
+    setTimeout(() => {
+      setSelectedIndex(null);
+      setFeedback(null);
+    }, 350);
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      {props.isPractice && (
+        <p className="text-center font-hud text-sm text-muted-foreground">
+          Find the missing piece. Rows share shapes, columns share colors.
+        </p>
+      )}
+      <p className="font-hud text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        Round {roundIndex + 1}/{rounds.length}
+      </p>
+      <div className="grid grid-cols-3 gap-2 rounded-[28px] bg-card/70 p-3">
+        {currentRound.pattern.map((item, index) => (
+          <div
+            key={index}
+            className={`flex h-16 w-16 items-center justify-center rounded-2xl ${
+              index === currentRound.missingIndex
+                ? "border border-dashed border-primary/40 bg-background/20"
+                : "bg-background/35"
+            }`}
+          >
+            {index === currentRound.missingIndex ? <span className="text-2xl text-primary">?</span> : <PatternIcon item={item} />}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        {currentRound.options.map((option, optionIndex) => (
+          <button
+            key={optionIndex}
+            onClick={() => handleSelect(optionIndex)}
+            disabled={props.disabled || selectedIndex !== null}
+            className={`flex h-16 w-16 items-center justify-center rounded-2xl border transition-all active:scale-95 ${
+              selectedIndex === optionIndex
+                ? feedback === "correct"
+                  ? "border-primary bg-primary/10"
+                  : "border-destructive bg-destructive/10"
+                : "border-border bg-card/70 hover:border-primary/30"
+            }`}
+          >
+            <PatternIcon item={option} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WordScrambleBoard(props: Omit<MatchPuzzleBoardProps, "puzzleType">) {
+  const [puzzle] = useState(() => buildWordScramble(props.seed, props.difficulty));
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+  const [solved, setSolved] = useState(false);
+  const [shake, setShake] = useState(false);
+
+  useEffect(() => {
+    const currentWord = selectedIndices.map((index) => puzzle.scrambled[index]).join("");
+    let matchingPrefix = 0;
+
+    while (
+      matchingPrefix < currentWord.length &&
+      currentWord[matchingPrefix] === puzzle.targetWord[matchingPrefix]
+    ) {
+      matchingPrefix += 1;
+    }
+
+    const progress = clampProgress((matchingPrefix / puzzle.targetWord.length) * 100);
+    props.onProgress(progress);
+    props.onStateChange?.({
+      kind: "word_scramble",
+      selectedIndices,
+    }, progress);
+  }, [props, puzzle.scrambled, puzzle.targetWord, selectedIndices]);
+
+  function handleLetterTap(index: number) {
+    if (props.disabled || solved) return;
+
+    if (selectedIndices.includes(index)) {
+      setSelectedIndices((current) => current.filter((value) => value !== index));
+      return;
+    }
+
+    const nextIndices = [...selectedIndices, index];
+    setSelectedIndices(nextIndices);
+
+    if (nextIndices.length === puzzle.scrambled.length) {
+      const guess = nextIndices.map((value) => puzzle.scrambled[value]).join("");
+
+      if (guess === puzzle.targetWord) {
+        setSolved(true);
+        props.onProgress(100);
+        setTimeout(props.onSolve, 250);
+      } else {
+        setShake(true);
+        setTimeout(() => {
+          setShake(false);
+          setSelectedIndices([]);
+        }, 350);
+      }
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      {props.isPractice && (
+        <p className="text-center font-hud text-sm text-muted-foreground">
+          Tap the scrambled letters in order to spell the hidden word.
+        </p>
+      )}
+      <div className={`flex gap-2 ${shake ? "animate-pulse" : ""}`}>
+        {puzzle.scrambled.map((_, slotIndex) => (
+          <div
+            key={slotIndex}
+            className={`flex h-14 w-12 items-center justify-center rounded-2xl border text-xl font-black ${
+              slotIndex < selectedIndices.length
+                ? "border-primary/25 bg-background/35"
+                : "border-border bg-muted/40 text-muted-foreground"
+            }`}
+          >
+            {slotIndex < selectedIndices.length ? puzzle.scrambled[selectedIndices[slotIndex]] : ""}
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        {puzzle.scrambled.map((letter, index) => {
+          const used = selectedIndices.includes(index);
+          return (
+            <button
+              key={`${letter}-${index}`}
+              onClick={() => handleLetterTap(index)}
+              disabled={props.disabled || solved}
+              className={`flex h-14 w-14 items-center justify-center rounded-2xl border text-xl font-black transition-all active:scale-95 ${
+                used
+                  ? "border-transparent bg-secondary/50 text-muted-foreground"
+                  : "border-border bg-card/70 hover:border-primary/30"
+              }`}
+            >
+              {letter}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TileSlidingBoard(props: Omit<MatchPuzzleBoardProps, "puzzleType">) {
+  const [puzzle] = useState(() => buildTilePuzzle(props.seed, props.difficulty));
+  const [tiles, setTiles] = useState(puzzle.tiles);
+  const [solved, setSolved] = useState(false);
+
+  useEffect(() => {
+    const correct = tiles.filter((value, index) => {
+      if (index === tiles.length - 1) return value === 0;
+      return value === index + 1;
+    }).length;
+
+    const progress = clampProgress((correct / tiles.length) * 100);
+    props.onProgress(progress);
+    props.onStateChange?.({
+      kind: "tile_slide",
+      tiles,
+    }, progress);
+  }, [props, tiles]);
+
+  function handleTileTap(index: number) {
+    if (props.disabled || solved || tiles[index] === 0) return;
+
+    const emptyIndex = tiles.indexOf(0);
+    const size = puzzle.size;
+    const row = Math.floor(index / size);
+    const col = index % size;
+    const emptyRow = Math.floor(emptyIndex / size);
+    const emptyCol = emptyIndex % size;
+    const isAdjacent = Math.abs(row - emptyRow) + Math.abs(col - emptyCol) === 1;
+
+    if (!isAdjacent) return;
+
+    setTiles((currentTiles) => {
+      const nextTiles = [...currentTiles];
+      [nextTiles[index], nextTiles[emptyIndex]] = [nextTiles[emptyIndex], nextTiles[index]];
+
+      if (isTilePuzzleSolved(nextTiles)) {
+        setSolved(true);
+        props.onProgress(100);
+        setTimeout(props.onSolve, 250);
+      }
+
+      return nextTiles;
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      {props.isPractice && (
+        <p className="text-center font-hud text-sm text-muted-foreground">
+          Slide tiles into order by moving pieces into the empty space.
+        </p>
+      )}
+      <div className="grid grid-cols-3 gap-2 rounded-[28px] bg-card/70 p-3">
+        {tiles.map((tile, index) => (
+          <button
+            key={index}
+            onClick={() => handleTileTap(index)}
+            disabled={props.disabled || solved || tile === 0}
+            className={`flex h-16 w-16 items-center justify-center rounded-2xl border text-xl font-black transition-all active:scale-95 ${
+              tile === 0
+                ? "border-transparent bg-transparent"
+                : "border-border bg-background/35 hover:border-primary/30"
+            }`}
+          >
+            {tile !== 0 ? tile : ""}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SudokuMiniBoard(props: Omit<MatchPuzzleBoardProps, "puzzleType">) {
+  const [puzzle] = useState(() => buildSudokuMini(props.seed, props.difficulty));
+  const [values, setValues] = useState<(number | null)[]>(puzzle.puzzle);
+  const [selectedCell, setSelectedCell] = useState<number | null>(null);
+  const [solved, setSolved] = useState(false);
+
+  useEffect(() => {
+    const correct = values.filter((value, index) => value === puzzle.solution[index]).length;
+    const progress = clampProgress((correct / puzzle.solution.length) * 100);
+    props.onProgress(progress);
+    props.onStateChange?.({
+      kind: "sudoku_mini",
+      values,
+    }, progress);
+  }, [props, puzzle.solution, values]);
+
+  function handleCellTap(index: number) {
+    if (props.disabled || solved || puzzle.puzzle[index] !== null) return;
+    setSelectedCell(index);
+  }
+
+  function handleNumberTap(value: number) {
+    if (selectedCell === null || props.disabled || solved) return;
+
+    setValues((currentValues) => {
+      const nextValues = [...currentValues];
+      nextValues[selectedCell] = value === 0 ? null : value;
+      const filled = nextValues.every((entry) => entry !== null);
+      const correct = nextValues.every((entry, index) => entry === puzzle.solution[index]);
+
+      if (filled && correct) {
+        setSolved(true);
+        props.onProgress(100);
+        setTimeout(props.onSolve, 250);
+      }
+
+      return nextValues;
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      {props.isPractice && (
+        <p className="text-center font-hud text-sm text-muted-foreground">
+          Fill 1-4 so each row, column, and 2x2 box has no repeats.
+        </p>
+      )}
+      <div className="grid grid-cols-4 gap-1 rounded-[28px] bg-card/70 p-3">
+        {values.map((value, index) => {
+          const row = Math.floor(index / 4);
+          const col = index % 4;
+          const isGiven = puzzle.puzzle[index] !== null;
+          const dividerRight = col === 1 ? "border-r-2 border-r-primary/30" : "";
+          const dividerBottom = row === 1 ? "border-b-2 border-b-primary/30" : "";
+
+          return (
+            <button
+              key={index}
+              onClick={() => handleCellTap(index)}
+              disabled={props.disabled || solved || isGiven}
+              className={`flex h-14 w-14 items-center justify-center rounded-2xl border text-lg font-black transition-all ${dividerRight} ${dividerBottom} ${
+                isGiven
+                  ? "border-transparent bg-secondary"
+                  : selectedCell === index
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-background/30"
+              }`}
+            >
+              {value ?? ""}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2">
+        {[1, 2, 3, 4].map((value) => (
+          <button
+            key={value}
+            onClick={() => handleNumberTap(value)}
+            disabled={props.disabled || solved || selectedCell === null}
+            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-card/70 text-lg font-black transition-all active:scale-95"
+          >
+            {value}
+          </button>
+        ))}
+        <button
+          onClick={() => handleNumberTap(0)}
+          disabled={props.disabled || solved || selectedCell === null}
+          className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-card/70 text-sm font-black text-muted-foreground transition-all active:scale-95"
+        >
+          X
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function MatchPuzzleBoard(props: MatchPuzzleBoardProps) {
+  if (props.puzzleType === "rotate_pipes") {
+    return <RotatePipesBoard {...props} />;
+  }
+
+  if (props.puzzleType === "number_grid") {
+    return <NumberGridBoard {...props} />;
+  }
+
+  if (props.puzzleType === "pattern_match") {
+    return <PatternMatchBoard {...props} />;
+  }
+
+  if (props.puzzleType === "word_scramble") {
+    return <WordScrambleBoard {...props} />;
+  }
+
+  if (props.puzzleType === "tile_slide") {
+    return <TileSlidingBoard {...props} />;
+  }
+
+  return <SudokuMiniBoard {...props} />;
+}

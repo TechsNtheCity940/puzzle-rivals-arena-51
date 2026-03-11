@@ -1,18 +1,29 @@
 import { useState } from "react";
-import { CURRENT_USER, PLAYERS, LEADERBOARD, CLANS, NOTIFICATIONS, getRankBand, getRankColor, PUZZLE_TYPES } from "@/lib/seed-data";
-import { Settings, Users, Trophy, Shield, Bell, Link2, ChevronRight, Swords, BarChart3 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAuth } from "@/providers/AuthProvider";
+import {
+  CURRENT_USER,
+  PLAYERS,
+  LEADERBOARD,
+  CLANS,
+  NOTIFICATIONS,
+  getRankBand,
+  getRankColor,
+  PUZZLE_TYPES,
+} from "@/lib/seed-data";
+import { Settings, Users, Trophy, Shield, Bell, Link2, ChevronRight, Swords, BarChart3 } from "lucide-react";
 
 type Tab = "stats" | "leaderboard" | "friends" | "clan" | "notifications";
 
 export default function ProfilePage() {
   const [tab, setTab] = useState<Tab>("stats");
-  const user = CURRENT_USER;
+  const { user: authenticatedUser } = useAuth();
+  const user = authenticatedUser ?? CURRENT_USER;
   const rankBand = getRankBand(user.elo);
   const xpPct = Math.round((user.xp / user.xpToNext) * 100);
 
-  const friends = PLAYERS.filter(p => user.friends.includes(p.id));
-  const nemeses = PLAYERS.filter(p => user.nemeses.includes(p.id));
+  const friends = PLAYERS.filter((p) => user.friends.includes(p.id));
+  const nemeses = PLAYERS.filter((p) => user.nemeses.includes(p.id));
 
   const tabs: { id: Tab; label: string; icon: typeof Trophy }[] = [
     { id: "stats", label: "Stats", icon: BarChart3 },
@@ -23,95 +34,98 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="flex flex-col">
-      {/* Profile Header */}
-      <div className="px-4 pt-4 pb-4 border-b border-border">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded bg-secondary flex items-center justify-center font-display font-bold text-2xl">
+    <div className="space-y-4 px-4 pb-4 pt-6">
+      <section className="panel">
+        <div className="flex items-start gap-4">
+          <div className="flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-prestige text-3xl font-black text-white">
             {user.username[0]}
           </div>
           <div className="flex-1">
-            <h1 className="font-display font-bold text-lg">{user.username}</h1>
-            <p className={`text-xs font-condensed font-bold uppercase tracking-wider ${getRankColor(user.rank)}`}>
-              {rankBand.label} · ELO {user.elo}
-            </p>
-            <div className="flex items-center gap-1 mt-1.5">
-              <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-                <div className="h-full bg-ion rounded-full" style={{ width: `${xpPct}%` }} />
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="hud-label">Player Card</p>
+                <h1 className="mt-1 text-2xl font-black">{user.username}</h1>
+                <p className={`mt-1 text-[11px] font-hud font-semibold uppercase tracking-[0.18em] ${getRankColor(user.rank)}`}>
+                  {rankBand.label} · ELO {user.elo}
+                </p>
               </div>
-              <span className="text-[9px] font-condensed text-muted-foreground">Lv.{user.level}</span>
+              <button className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-background/35">
+                <Settings size={18} className="text-muted-foreground" />
+              </button>
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-gradient-play" style={{ width: `${xpPct}%` }} />
+              </div>
+              <span className="font-hud text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Lv {user.level}</span>
             </div>
           </div>
-          <button className="p-2">
-            <Settings size={18} className="text-muted-foreground" />
-          </button>
         </div>
 
-        {/* Quick stats */}
-        <div className="grid grid-cols-4 gap-2 mt-4">
+        <div className="mt-5 grid grid-cols-4 gap-3">
           {[
             { val: user.wins, label: "Wins" },
             { val: user.losses, label: "Losses" },
-            { val: user.bestStreak, label: "Best Streak" },
-            { val: `${Math.round((user.wins / user.matchesPlayed) * 100)}%`, label: "Win Rate" },
-          ].map(s => (
-            <div key={s.label} className="text-center">
-              <p className="font-display font-bold text-sm">{s.val}</p>
-              <p className="text-[9px] font-condensed text-muted-foreground uppercase tracking-wider">{s.label}</p>
+            { val: user.bestStreak, label: "Best" },
+            { val: `${Math.round((user.wins / user.matchesPlayed) * 100)}%`, label: "Rate" },
+          ].map((s) => (
+            <div key={s.label} className="rounded-2xl bg-background/35 p-3 text-center">
+              <p className="text-lg font-black">{s.val}</p>
+              <p className="mt-1 font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Social links */}
-        <div className="flex gap-2 mt-3">
-          <button className="h-7 px-3 bg-secondary rounded text-[10px] font-display font-semibold flex items-center gap-1.5">
-            <Link2 size={10} />
+        <div className="mt-4 flex gap-2">
+          <button className="flex-1 rounded-2xl bg-background/35 px-3 py-2 text-[11px] font-hud font-semibold uppercase tracking-[0.14em]">
+            <Link2 size={12} className="mr-1 inline" />
             {user.socialLinks.facebook || "Link Facebook"}
           </button>
-          <button className="h-7 px-3 bg-secondary rounded text-[10px] font-display font-semibold flex items-center gap-1.5">
-            <Link2 size={10} />
+          <button className="flex-1 rounded-2xl bg-background/35 px-3 py-2 text-[11px] font-hud font-semibold uppercase tracking-[0.14em]">
+            <Link2 size={12} className="mr-1 inline" />
             {user.socialLinks.tiktok || "Link TikTok"}
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* Sub-tabs */}
-      <div className="flex border-b border-border">
-        {tabs.map(t => (
+      <div className="grid grid-cols-5 gap-2 rounded-[28px] border border-border bg-card/80 p-2 backdrop-blur-xl">
+        {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 py-2.5 text-center text-[10px] font-condensed font-bold uppercase tracking-wider transition-colors relative ${
-              tab === t.id ? "text-ion" : "text-muted-foreground"
+            className={`relative rounded-[20px] px-2 py-3 text-center transition-all ${
+              tab === t.id ? "bg-primary/12 text-primary" : "text-muted-foreground"
             }`}
           >
-            {t.label}
-            {t.id === "notifications" && NOTIFICATIONS.filter(n => !n.isRead).length > 0 && (
-              <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-ion" />
+            <t.icon size={16} className="mx-auto" />
+            <span className="mt-1 block font-hud text-[9px] font-semibold uppercase tracking-[0.14em]">{t.label}</span>
+            {t.id === "notifications" && NOTIFICATIONS.filter((n) => !n.isRead).length > 0 && (
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
             )}
             {tab === t.id && (
-              <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-ion" />
+              <motion.div layoutId="profile-tab" className="absolute inset-0 -z-10 rounded-[20px] border border-primary/20 bg-primary/5" />
             )}
           </button>
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="px-4 py-4">
+      <div className="space-y-3">
         {tab === "stats" && (
-          <div className="space-y-4">
-            <p className="font-display font-bold text-sm">Puzzle Skills</p>
-            <div className="space-y-2">
-              {PUZZLE_TYPES.map(p => {
+          <div className="panel">
+            <p className="hud-label">Puzzle Skill Breakdown</p>
+            <div className="mt-4 space-y-3">
+              {PUZZLE_TYPES.map((p) => {
                 const skill = user.puzzleSkills[p.type];
                 return (
-                  <div key={p.type} className="flex items-center gap-3">
-                    <span className="text-lg w-6">{p.icon}</span>
-                    <span className="text-xs font-body w-20 truncate">{p.label}</span>
-                    <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-                      <div className="h-full bg-ion rounded-full" style={{ width: `${skill}%` }} />
+                  <div key={p.type} className="rounded-2xl bg-background/35 p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{p.icon}</span>
+                      <span className="flex-1 text-sm font-bold">{p.label}</span>
+                      <span className="font-hud text-xs text-primary">{skill}</span>
                     </div>
-                    <span className="text-[10px] font-condensed font-bold w-6 text-right">{skill}</span>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-gradient-play" style={{ width: `${skill}%` }} />
+                    </div>
                   </div>
                 );
               })}
@@ -120,27 +134,23 @@ export default function ProfilePage() {
         )}
 
         {tab === "leaderboard" && (
-          <div className="space-y-1">
-            {LEADERBOARD.map(entry => (
+          <div className="space-y-2">
+            {LEADERBOARD.map((entry) => (
               <div
                 key={entry.userId}
-                className={`flex items-center gap-3 p-2.5 rounded ${
-                  entry.userId === user.id ? "surface border-ion" : ""
-                }`}
+                className={`surface flex items-center gap-3 p-3 ${entry.userId === user.id ? "border-primary/30 bg-primary/5" : ""}`}
               >
-                <span className="font-condensed font-bold text-sm w-6 text-center">
-                  {entry.rank}
-                </span>
-                <div className="w-8 h-8 rounded bg-secondary flex items-center justify-center font-display font-bold text-xs">
+                <span className="w-6 text-center font-hud text-sm font-semibold">{entry.rank}</span>
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-background/35 text-sm font-black">
                   {entry.username[0]}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-display font-semibold text-xs truncate">{entry.username}</p>
-                  <p className={`text-[10px] font-condensed font-bold uppercase ${getRankColor(entry.rankTier)}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{entry.username}</p>
+                  <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.16em] ${getRankColor(entry.rankTier)}`}>
                     {entry.rankTier}
                   </p>
                 </div>
-                <span className="font-condensed font-bold text-sm">{entry.elo}</span>
+                <span className="text-sm font-black text-primary">{entry.elo}</span>
               </div>
             ))}
           </div>
@@ -149,72 +159,80 @@ export default function ProfilePage() {
         {tab === "friends" && (
           <div className="space-y-4">
             {nemeses.length > 0 && (
-              <>
-                <p className="font-display font-bold text-sm flex items-center gap-2">
+              <div className="panel">
+                <p className="mb-3 flex items-center gap-2 text-sm font-black">
                   <Swords size={14} className="text-destructive" />
                   Nemeses
                 </p>
-                {nemeses.map(n => (
-                  <div key={n.id} className="flex items-center gap-3 surface rounded p-3">
-                    <div className="w-10 h-10 rounded bg-secondary flex items-center justify-center font-display font-bold text-sm">
-                      {n.username[0]}
+                <div className="space-y-2">
+                  {nemeses.map((n) => (
+                    <div key={n.id} className="flex items-center gap-3 rounded-2xl bg-background/35 p-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-card text-sm font-black">
+                        {n.username[0]}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold">{n.username}</p>
+                        <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.16em] ${getRankColor(n.rank)}`}>
+                          ELO {n.elo}
+                        </p>
+                      </div>
+                      <button className="rounded-2xl bg-destructive px-3 py-2 font-hud text-[11px] font-semibold uppercase tracking-[0.14em] text-white">
+                        Revenge
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="panel">
+              <p className="mb-3 text-sm font-black">Friends</p>
+              <div className="space-y-2">
+                {friends.map((f) => (
+                  <div key={f.id} className="flex items-center gap-3 rounded-2xl bg-background/35 p-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-card text-sm font-black">
+                      {f.username[0]}
                     </div>
                     <div className="flex-1">
-                      <p className="font-display font-semibold text-xs">{n.username}</p>
-                      <p className={`text-[10px] font-condensed font-bold uppercase ${getRankColor(n.rank)}`}>
-                        ELO {n.elo}
+                      <p className="text-sm font-bold">{f.username}</p>
+                      <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.16em] ${getRankColor(f.rank)}`}>
+                        ELO {f.elo}
                       </p>
                     </div>
-                    <button className="h-7 px-3 bg-destructive text-destructive-foreground font-display font-bold text-[10px] uppercase rounded">
-                      Revenge
+                    <button className="rounded-2xl bg-card px-3 py-2 font-hud text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Challenge
                     </button>
                   </div>
                 ))}
-              </>
-            )}
-
-            <p className="font-display font-bold text-sm">Friends</p>
-            {friends.map(f => (
-              <div key={f.id} className="flex items-center gap-3 surface rounded p-3">
-                <div className="w-10 h-10 rounded bg-secondary flex items-center justify-center font-display font-bold text-sm">
-                  {f.username[0]}
-                </div>
-                <div className="flex-1">
-                  <p className="font-display font-semibold text-xs">{f.username}</p>
-                  <p className={`text-[10px] font-condensed font-bold uppercase ${getRankColor(f.rank)}`}>
-                    ELO {f.elo}
-                  </p>
-                </div>
-                <button className="h-7 px-3 bg-secondary font-display font-bold text-[10px] uppercase rounded">
-                  Challenge
-                </button>
               </div>
-            ))}
+            </div>
           </div>
         )}
 
         {tab === "clan" && (
           <div className="space-y-3">
-            {CLANS.map(clan => (
-              <div key={clan.id} className="surface rounded p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <Shield size={24} className="text-ion" />
-                  <div className="flex-1">
-                    <p className="font-display font-bold text-sm">{clan.name} [{clan.tag}]</p>
-                    <p className="text-[10px] text-muted-foreground">{clan.memberCount}/{clan.maxMembers} members · Rank #{clan.rank}</p>
+            {CLANS.map((clan) => (
+              <div key={clan.id} className="panel">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12">
+                    <Shield size={22} className="text-primary" />
                   </div>
-                  <p className="font-display font-bold text-sm text-ion">🏆 {clan.trophies.toLocaleString()}</p>
+                  <div className="flex-1">
+                    <p className="text-sm font-black">{clan.name} [{clan.tag}]</p>
+                    <p className="mt-1 text-[11px] font-hud text-muted-foreground">{clan.memberCount}/{clan.maxMembers} members · Rank #{clan.rank}</p>
+                  </div>
+                  <p className="text-sm font-black text-primary">🏆 {clan.trophies.toLocaleString()}</p>
                 </div>
-                <div className="space-y-1">
-                  {clan.members.slice(0, 3).map(m => (
-                    <div key={m.userId} className="flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground capitalize text-[10px] w-12">{m.role}</span>
-                      <span className="font-display font-semibold">{m.username}</span>
-                      <span className="text-muted-foreground ml-auto">+{m.trophiesContributed.toLocaleString()}</span>
+                <div className="mt-4 space-y-2">
+                  {clan.members.slice(0, 3).map((m) => (
+                    <div key={m.userId} className="flex items-center gap-2 rounded-2xl bg-background/35 px-3 py-2 text-sm">
+                      <span className="w-12 font-hud text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{m.role}</span>
+                      <span className="font-bold">{m.username}</span>
+                      <span className="ml-auto text-muted-foreground">+{m.trophiesContributed.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
-                <button className="mt-3 w-full h-8 bg-secondary font-display font-bold text-[10px] uppercase tracking-wider rounded">
+                <button className="mt-4 h-10 w-full rounded-2xl bg-card font-hud text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   Request to Join
                 </button>
               </div>
@@ -223,18 +241,15 @@ export default function ProfilePage() {
         )}
 
         {tab === "notifications" && (
-          <div className="space-y-1">
-            {NOTIFICATIONS.map(n => (
-              <div
-                key={n.id}
-                className={`surface rounded p-3 flex items-center gap-3 ${!n.isRead ? "border-ion" : ""}`}
-              >
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!n.isRead ? "bg-ion" : "bg-transparent"}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="font-display font-semibold text-xs">{n.title}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{n.message}</p>
+          <div className="space-y-2">
+            {NOTIFICATIONS.map((n) => (
+              <div key={n.id} className={`surface flex items-center gap-3 p-3 ${!n.isRead ? "border-primary/30" : ""}`}>
+                <div className={`h-2 w-2 rounded-full ${!n.isRead ? "bg-primary" : "bg-transparent"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold">{n.title}</p>
+                  <p className="truncate text-sm text-muted-foreground">{n.message}</p>
                 </div>
-                <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
+                <ChevronRight size={14} className="text-muted-foreground" />
               </div>
             ))}
           </div>
