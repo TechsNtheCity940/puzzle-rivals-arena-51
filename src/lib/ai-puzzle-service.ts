@@ -1,4 +1,4 @@
-interface MatchPuzzleMeta {
+vvvvvvvvvvvvvvvvvvvvvv                       x                                                                                                                                                     zcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvcccccccccccccinterface MatchPuzzleMeta {
   type: MatchPlayablePuzzleType;
   label: string;
   icon: string;

@@ -1,4 +1,4 @@
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeaders } from "../_shared/cors.ts";                                                                                                                                                                                                                                                                                                                                                                                                                                   
 import { requireUser } from "../_shared/auth.ts";
 import { createAdminClient } from "../_shared/supabase.ts";
 import { getLobbySnapshot } from "../_shared/matchmaking.ts";
