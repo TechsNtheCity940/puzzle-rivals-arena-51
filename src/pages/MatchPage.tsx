@@ -7,6 +7,7 @@ import MatchPuzzleBoard from "@/components/match/MatchPuzzleBoard";
 import { subscribeToLobby, supabaseApi } from "@/lib/api-client";
 import type { BackendLobby, BackendLobbyPlayer, MatchMode, PuzzleSubmission } from "@/lib/backend";
 import { getRankColor } from "@/lib/seed-data";
+import { isSupabaseConfigured, supabaseConfigErrorMessage } from "@/lib/supabase-client";
 import { useAuth } from "@/providers/AuthProvider";
 
 function formatTime(seconds: number) {
@@ -50,7 +51,7 @@ export default function MatchPage() {
   const completedRoundRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isReady || !user) return;
+    if (!isSupabaseConfigured || !isReady || !user) return;
 
     let cancelled = false;
     setLobby(null);
@@ -228,6 +229,25 @@ export default function MatchPage() {
     } finally {
       setVotePending(null);
     }
+  }
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="panel w-full max-w-md space-y-4">
+          <div>
+            <p className="hud-label text-primary">Backend Required</p>
+            <h1 className="mt-2 text-2xl font-black">Matchmaking is unavailable in local mock mode</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{supabaseConfigErrorMessage}</p>
+          </div>
+
+          <Button onClick={() => navigate("/play")} variant="play" size="lg" className="w-full">
+            <Home size={16} />
+            Back to Play
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (!isReady || !user || !lobby) {

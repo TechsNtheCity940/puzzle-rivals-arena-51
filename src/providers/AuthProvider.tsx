@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { CURRENT_USER } from "@/lib/seed-data";
-import { supabase } from "@/lib/supabase-client";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase-client";
 import type { UserProfile } from "@/lib/types";
 
 interface AuthContextValue {
@@ -24,6 +24,10 @@ function sleep(ms: number) {
 }
 
 async function fetchCurrentUser(): Promise<{ token: string | null; user: UserProfile | null }> {
+  if (!supabase) {
+    return { token: null, user: CURRENT_USER };
+  }
+
   const { data: sessionData } = await supabase.auth.getSession();
   const session = sessionData.session;
 
@@ -87,6 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function bootstrap() {
       try {
+        if (!isSupabaseConfigured) {
+          if (!mounted) return;
+          setToken(null);
+          setUser(CURRENT_USER);
+          return;
+        }
+
         const current = await loadCurrentUserWithRetry();
         if (current.user) {
           if (!mounted) return;
@@ -126,6 +137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -141,6 +156,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function refreshUser() {
+    if (!isSupabaseConfigured) {
+      setToken(null);
+      setUser(CURRENT_USER);
+      return;
+    }
+
     const me = await loadCurrentUserWithRetry(2);
     setToken(me.token);
     setUser(me.user);

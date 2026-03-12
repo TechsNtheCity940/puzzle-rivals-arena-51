@@ -2,6 +2,7 @@ import "dotenv/config";
 import { z } from "zod";
 
 const serverEnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   SERVER_PORT: z.coerce.number().default(3001),
   CLIENT_ORIGIN: z.string().default("http://localhost:8080"),
   DATABASE_PATH: z.string().default("./server/data/puzzle-rivals.sqlite"),
@@ -17,7 +18,12 @@ const serverEnvSchema = z.object({
 
 const env = serverEnvSchema.parse(process.env);
 
+if (env.NODE_ENV === "production" && env.SESSION_SECRET === "dev-session-secret-change-me") {
+  throw new Error("SESSION_SECRET must be set to a strong production value.");
+}
+
 export const serverConfig = {
+  nodeEnv: env.NODE_ENV,
   port: env.SERVER_PORT,
   clientOrigin: env.CLIENT_ORIGIN,
   databasePath: env.DATABASE_PATH,
