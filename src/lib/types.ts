@@ -55,6 +55,9 @@ export interface UserProfile {
   avatarUrl?: string;
   frameId?: string;
   themeId?: string;
+  hintBalance?: number;
+  hasSeasonPass?: boolean;
+  vipExpiresAt?: string | null;
   elo: number;
   rank: RankTier;
   level: number;
@@ -72,7 +75,9 @@ export interface UserProfile {
   isGuest?: boolean;
   authMethod?: "guest" | "email" | "facebook";
   clanId?: string;
+  bestPuzzleType?: PuzzleType | null;
   worstPuzzleType?: PuzzleType | null;
+  rivalUserId?: string | null;
   socialLinks: {
     facebook?: string;
     tiktok?: string;

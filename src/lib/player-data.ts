@@ -21,6 +21,11 @@ type ProfileRow = {
   coins: number;
   gems: number;
   is_vip: boolean;
+  vip_expires_at: string | null;
+  has_season_pass: boolean;
+  theme_id: string | null;
+  frame_id: string | null;
+  hint_balance: number;
   best_puzzle_type: string | null;
   worst_puzzle_type: string | null;
   rival_user_id: string | null;
@@ -64,6 +69,11 @@ export function buildGuestUser(overrides: Partial<UserProfile> = {}): UserProfil
     id: "guest-player",
     username: overrides.username ?? "Guest Player",
     avatarId: overrides.avatarId ?? DEFAULT_AVATAR_ID,
+    frameId: overrides.frameId,
+    themeId: overrides.themeId,
+    hintBalance: overrides.hintBalance ?? 0,
+    hasSeasonPass: overrides.hasSeasonPass ?? false,
+    vipExpiresAt: overrides.vipExpiresAt ?? null,
     socialLinks: {
       ...CURRENT_USER.socialLinks,
       ...overrides.socialLinks,
@@ -75,7 +85,9 @@ export function buildGuestUser(overrides: Partial<UserProfile> = {}): UserProfil
     isGuest: true,
     authMethod: "guest",
     email: null,
+    bestPuzzleType: null,
     worstPuzzleType: null,
+    rivalUserId: null,
     ...overrides,
   };
 }
@@ -125,6 +137,11 @@ export async function loadCurrentUserFromSession(session: Session | null): Promi
     username: profile.username,
     email: session.user.email ?? null,
     avatarId: profile.avatar_id ?? DEFAULT_AVATAR_ID,
+    frameId: profile.frame_id ?? undefined,
+    themeId: profile.theme_id ?? undefined,
+    hintBalance: profile.hint_balance,
+    hasSeasonPass: profile.has_season_pass,
+    vipExpiresAt: profile.vip_expires_at,
     elo: profile.elo,
     rank: getRankBand(profile.elo).tier,
     level: profile.level,
@@ -141,7 +158,9 @@ export async function loadCurrentUserFromSession(session: Session | null): Promi
     joinedAt: profile.created_at,
     isGuest: false,
     authMethod: provider,
+    bestPuzzleType: (profile.best_puzzle_type as PuzzleType | null) ?? null,
     worstPuzzleType: (profile.worst_puzzle_type as PuzzleType | null) ?? computed.worstPuzzleType,
+    rivalUserId: profile.rival_user_id,
     socialLinks: {
       facebook: profile.facebook_handle ?? undefined,
       tiktok: profile.tiktok_handle ?? undefined,
