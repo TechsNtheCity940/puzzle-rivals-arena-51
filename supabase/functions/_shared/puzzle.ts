@@ -169,8 +169,15 @@ export function getAdaptiveDifficulty(averageElo: number, mode: string): 1 | 2 |
   return difficulty as 1 | 2 | 3 | 4 | 5;
 }
 
-export function createAuthoritativePuzzleSelection(averageElo: number, mode: string): AuthoritativePuzzleSelection {
-  const puzzleType = MATCH_PLAYABLE_PUZZLES[Math.floor(Math.random() * MATCH_PLAYABLE_PUZZLES.length)];
+export function createAuthoritativePuzzleSelection(
+  averageElo: number,
+  mode: string,
+  preferredPuzzleType?: MatchPlayablePuzzleType | null,
+): AuthoritativePuzzleSelection {
+  const puzzleType =
+    preferredPuzzleType && MATCH_PLAYABLE_PUZZLES.includes(preferredPuzzleType)
+      ? preferredPuzzleType
+      : MATCH_PLAYABLE_PUZZLES[Math.floor(Math.random() * MATCH_PLAYABLE_PUZZLES.length)];
   const practiceSeed = randomSeed();
   let liveSeed = randomSeed();
   while (liveSeed === practiceSeed) liveSeed = randomSeed();

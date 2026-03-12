@@ -1,6 +1,10 @@
 import { createAdminClient } from "./supabase.ts";
 import { broadcastLobbySnapshot } from "./realtime.ts";
-import { createAuthoritativePuzzleSelection } from "./puzzle.ts";
+import { createAuthoritativePuzzleSelection, type MatchPlayablePuzzleType } from "./puzzle.ts";
+import {
+  generatePuzzleTemplate,
+  type PuzzleGeneratorPlayerProfile,
+} from "./puzzle-generator.ts";
 
 type LobbyRow = {
   id: string;
@@ -36,9 +40,163 @@ type RoundRow = {
   finished_at: string | null;
 };
 
+type ProfileSelectionRow = {
+  id: string;
+  elo: number;
+  best_puzzle_type: MatchPlayablePuzzleType | null;
+  worst_puzzle_type: MatchPlayablePuzzleType | null;
+  rival_user_id: string | null;
+};
+
+type PuzzleStatRow = {
+  user_id: string;
+  puzzle_type: MatchPlayablePuzzleType;
+  matches_played: number;
+  wins: number;
+  total_progress: number;
+};
+
+type HistoryResultRow = {
+  round_id: string;
+  user_id: string;
+  placement: number | null;
+  created_at: string;
+};
+
+type HistoryRoundRow = {
+  id: string;
+  puzzle_type: MatchPlayablePuzzleType;
+  finished_at: string | null;
+};
+
 const PRACTICE_DURATION_MS = 12_000;
 const LIVE_DURATION_MS = 90_000;
 const INTERMISSION_DURATION_MS = 10_000;
+
+function buildPuzzleProfile(rows: PuzzleStatRow[]): Pick<PuzzleGeneratorPlayerProfile, "averageProgressByType" | "matchesPlayedByType"> {
+  const averageProgressByType: Partial<Record<MatchPlayablePuzzleType, number>> = {};
+  const matchesPlayedByType: Partial<Record<MatchPlayablePuzzleType, number>> = {};
+
+  for (const row of rows) {
+    matchesPlayedByType[row.puzzle_type] = row.matches_played;
+    averageProgressByType[row.puzzle_type] =
+      row.matches_played > 0 ? Math.round(row.total_progress / row.matches_played) : 0;
+  }
+
+  return {
+    averageProgressByType,
+    matchesPlayedByType,
+  };
+}
+
+function deriveMaterializedPuzzleTypes(rows: PuzzleStatRow[]) {
+  const stats = rows
+    .filter((row) => row.matches_played > 0)
+    .map((row) => ({
+      type: row.puzzle_type,
+      averageProgress: row.total_progress / row.matches_played,
+      winRate: row.wins / row.matches_played,
+      matchesPlayed: row.matches_played,
+    }));
+
+  if (stats.length === 0) {
+    return {
+      bestPuzzleType: null,
+      worstPuzzleType: null,
+    };
+  }
+
+  const best = [...stats].sort((left, right) => {
+    if (right.averageProgress !== left.averageProgress) return right.averageProgress - left.averageProgress;
+    if (right.winRate !== left.winRate) return right.winRate - left.winRate;
+    return right.matchesPlayed - left.matchesPlayed;
+  })[0];
+
+  const worst = [...stats].sort((left, right) => {
+    if (left.averageProgress !== right.averageProgress) return left.averageProgress - right.averageProgress;
+    if (left.winRate !== right.winRate) return left.winRate - right.winRate;
+    return right.matchesPlayed - left.matchesPlayed;
+  })[0];
+
+  return {
+    bestPuzzleType: best.type,
+    worstPuzzleType: worst.type,
+  };
+}
+
+async function getLastLossByUserId(
+  playerIds: string[],
+): Promise<Partial<Record<string, MatchPlayablePuzzleType>>> {
+  if (playerIds.length < 2) {
+    return {};
+  }
+
+  const admin = createAdminClient();
+  const { data: resultRows } = await admin
+    .from("round_results")
+    .select("round_id, user_id, placement, created_at")
+    .in("user_id", playerIds)
+    .not("placement", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(120);
+
+  const normalizedResults = (resultRows ?? []) as HistoryResultRow[];
+  if (normalizedResults.length === 0) {
+    return {};
+  }
+
+  const roundIds = [...new Set(normalizedResults.map((row) => row.round_id))];
+  const { data: roundRows } = await admin
+    .from("rounds")
+    .select("id, puzzle_type, finished_at")
+    .in("id", roundIds);
+
+  const roundsById = new Map(
+    ((roundRows ?? []) as HistoryRoundRow[]).map((row) => [row.id, row]),
+  );
+  const resultsByRound = new Map<string, HistoryResultRow[]>();
+
+  for (const row of normalizedResults) {
+    const bucket = resultsByRound.get(row.round_id) ?? [];
+    bucket.push(row);
+    resultsByRound.set(row.round_id, bucket);
+  }
+
+  const sortedRoundIds = [...resultsByRound.keys()].sort((left, right) => {
+    const leftRound = roundsById.get(left);
+    const rightRound = roundsById.get(right);
+    const leftTs = new Date(leftRound?.finished_at ?? resultsByRound.get(left)?.[0]?.created_at ?? 0).getTime();
+    const rightTs = new Date(rightRound?.finished_at ?? resultsByRound.get(right)?.[0]?.created_at ?? 0).getTime();
+    return rightTs - leftTs;
+  });
+
+  const lastLossByUserId: Partial<Record<string, MatchPlayablePuzzleType>> = {};
+  for (const roundId of sortedRoundIds) {
+    const round = roundsById.get(roundId);
+    const resultSet = resultsByRound.get(roundId) ?? [];
+    if (!round || resultSet.length < 2) continue;
+
+    for (const player of resultSet) {
+      if (player.placement === null || lastLossByUserId[player.user_id]) continue;
+      const beatenBy = resultSet.find(
+        (candidate) =>
+          candidate.user_id !== player.user_id &&
+          candidate.placement !== null &&
+          candidate.placement < player.placement,
+      );
+
+      if (beatenBy) {
+        lastLossByUserId[player.user_id] = round.puzzle_type;
+      }
+    }
+
+    if (playerIds.every((playerId) => Boolean(lastLossByUserId[playerId]))) {
+      break;
+    }
+  }
+
+  return lastLossByUserId;
+}
 
 function getReward(rank: number) {
   if (rank === 1) return { xp: 420, coins: 700, elo: 28 };
@@ -82,13 +240,57 @@ async function ensureRoundSelection(lobby: LobbyRow, activePlayers: PlayerRow[])
   if (lobby.status !== "filling" || activePlayers.length < lobby.max_players) return false;
   if (lobby.selected_puzzle_type) return false;
 
-  const { data: profiles } = await admin
-    .from("profiles")
-    .select("id, elo")
-    .in("id", activePlayers.map((player) => player.user_id));
+  const playerIds = activePlayers.map((player) => player.user_id);
+  const [{ data: profiles }, { data: puzzleStats }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("id, elo, best_puzzle_type, worst_puzzle_type, rival_user_id")
+      .in("id", playerIds),
+    admin
+      .from("player_puzzle_stats")
+      .select("user_id, puzzle_type, matches_played, wins, total_progress")
+      .in("user_id", playerIds),
+  ]);
 
-  const averageElo = Math.round((profiles ?? []).reduce((sum, profile) => sum + profile.elo, 0) / Math.max((profiles ?? []).length, 1));
-  const selection = createAuthoritativePuzzleSelection(averageElo, lobby.mode);
+  const normalizedProfiles = (profiles ?? []) as ProfileSelectionRow[];
+  const normalizedPuzzleStats = (puzzleStats ?? []) as PuzzleStatRow[];
+  const puzzleStatsByUser = new Map<string, PuzzleStatRow[]>();
+  for (const row of normalizedPuzzleStats) {
+    const bucket = puzzleStatsByUser.get(row.user_id) ?? [];
+    bucket.push(row);
+    puzzleStatsByUser.set(row.user_id, bucket);
+  }
+
+  const averageElo = Math.round(
+    normalizedProfiles.reduce((sum, profile) => sum + profile.elo, 0) /
+      Math.max(normalizedProfiles.length, 1),
+  );
+  const lastLossByUserId =
+    lobby.mode === "revenge" ? await getLastLossByUserId(playerIds) : {};
+
+  const generatorPlayers: PuzzleGeneratorPlayerProfile[] = normalizedProfiles.map((profile) => {
+    const puzzleProfile = buildPuzzleProfile(puzzleStatsByUser.get(profile.id) ?? []);
+    return {
+      userId: profile.id,
+      bestPuzzleType: profile.best_puzzle_type,
+      worstPuzzleType: profile.worst_puzzle_type,
+      rivalUserId: profile.rival_user_id,
+      ...puzzleProfile,
+    };
+  });
+
+  const template = generatePuzzleTemplate({
+    mode: lobby.mode,
+    averageElo,
+    players: generatorPlayers,
+    lastLossByUserId,
+  });
+
+  const selection = createAuthoritativePuzzleSelection(
+    averageElo,
+    lobby.mode,
+    template.primaryType,
+  );
 
   await admin.from("lobbies").update({
     status: "ready",
@@ -174,6 +376,9 @@ async function finalizeLiveRound(lobby: LobbyRow, activePlayers: PlayerRow[], ro
 
   for (const [index, entry] of ranked.entries()) {
     const reward = getReward(index + 1);
+    const rivalUserId = index === 0
+      ? (ranked[1]?.userId ?? null)
+      : (ranked[0]?.userId ?? null);
     await admin.from("round_results").upsert({
       round_id: round.id,
       user_id: entry.userId,
@@ -236,6 +441,21 @@ async function finalizeLiveRound(lobby: LobbyRow, activePlayers: PlayerRow[], ro
       total_solve_ms: nextSolveTotal,
       best_solve_ms: nextBestSolve,
     });
+
+    const { data: refreshedPuzzleStats } = await admin
+      .from("player_puzzle_stats")
+      .select("user_id, puzzle_type, matches_played, wins, total_progress")
+      .eq("user_id", entry.userId);
+
+    const materialized = deriveMaterializedPuzzleTypes(
+      ((refreshedPuzzleStats ?? []) as PuzzleStatRow[]),
+    );
+
+    await admin.from("profiles").update({
+      best_puzzle_type: materialized.bestPuzzleType,
+      worst_puzzle_type: materialized.worstPuzzleType,
+      rival_user_id: rivalUserId,
+    }).eq("id", entry.userId);
   }
 
   const intermissionEndsAt = new Date(Date.now() + INTERMISSION_DURATION_MS).toISOString();

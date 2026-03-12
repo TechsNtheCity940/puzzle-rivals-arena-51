@@ -257,11 +257,12 @@ export class LobbyManager extends EventEmitter {
   }
 
   private createLobby(mode: MatchMode, now: string): LobbyRecord {
+    const maxPlayers = mode === "revenge" ? 2 : this.maxPlayers;
     const lobby: LobbyRecord = {
       id: randomUUID(),
       mode,
       status: "filling",
-      maxPlayers: this.maxPlayers,
+      maxPlayers,
       createdAt: now,
       updatedAt: now,
       expiresAt: new Date(Date.now() + this.lobbyTtlMs).toISOString(),

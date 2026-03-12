@@ -21,6 +21,9 @@ type ProfileRow = {
   coins: number;
   gems: number;
   is_vip: boolean;
+  best_puzzle_type: string | null;
+  worst_puzzle_type: string | null;
+  rival_user_id: string | null;
   facebook_handle: string | null;
   tiktok_handle: string | null;
   created_at: string;
@@ -138,7 +141,7 @@ export async function loadCurrentUserFromSession(session: Session | null): Promi
     joinedAt: profile.created_at,
     isGuest: false,
     authMethod: provider,
-    worstPuzzleType: computed.worstPuzzleType,
+    worstPuzzleType: (profile.worst_puzzle_type as PuzzleType | null) ?? computed.worstPuzzleType,
     socialLinks: {
       facebook: profile.facebook_handle ?? undefined,
       tiktok: profile.tiktok_handle ?? undefined,

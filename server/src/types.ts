@@ -1,4 +1,4 @@
-export type MatchMode = "ranked" | "casual" | "royale" | "challenge" | "daily";
+export type MatchMode = "ranked" | "casual" | "royale" | "revenge" | "challenge" | "daily";
 
 export type RankTier = "bronze" | "silver" | "gold" | "platinum" | "diamond" | "master";
 

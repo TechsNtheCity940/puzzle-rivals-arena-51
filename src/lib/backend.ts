@@ -1,6 +1,6 @@
 import type { UserProfile } from "@/lib/types";
 
-export type MatchMode = "ranked" | "casual" | "royale" | "challenge" | "daily";
+export type MatchMode = "ranked" | "casual" | "royale" | "revenge" | "challenge" | "daily";
 
 export type MatchPlayablePuzzleType =
   | "rotate_pipes"

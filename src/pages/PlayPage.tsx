@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Crown, Sparkles, Swords, Target, Users, Zap } from "lucide-react";
+import { Crown, Flame, Sparkles, Swords, Target, Users, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { DAILY_CHALLENGES, getRankBand, getRankColor } from "@/lib/seed-data";
 
-type PlayMode = "ranked" | "casual" | "royale" | "challenge" | "daily";
+type PlayMode = "ranked" | "casual" | "royale" | "revenge" | "challenge" | "daily";
 
 const MODES = [
   { id: "ranked" as PlayMode, label: "Ranked", icon: Swords, desc: "4-player standard ladder lobby" },
   { id: "casual" as PlayMode, label: "Casual", icon: Zap, desc: "Generated puzzles without rank pressure" },
   { id: "royale" as PlayMode, label: "Puzzle Royale", icon: Crown, desc: "Same lobby rule, bigger stakes" },
+  { id: "revenge" as PlayMode, label: "Revenge", icon: Flame, desc: "2-player rematch weighted by rivalry data" },
   { id: "challenge" as PlayMode, label: "Challenge", icon: Target, desc: "Practice into live match flow" },
   { id: "daily" as PlayMode, label: "Daily 1%", icon: Users, desc: "Generated daily elite variant" },
 ];
@@ -21,6 +22,36 @@ export default function PlayPage() {
   const [selectedMode, setSelectedMode] = useState<PlayMode>("ranked");
   const { user, canSave } = useAuth();
   const rankBand = getRankBand(user?.elo ?? 0);
+  const isRevengeMode = selectedMode === "revenge";
+  const lobbySizeLabel = isRevengeMode ? "2 Players" : "4 Players";
+  const queueSteps = isRevengeMode
+    ? [
+        "Queue into a 2-player revenge duel",
+        "The selector weights your weakest puzzle, their strongest puzzle, and your last head-to-head loss",
+        "Both players see the puzzle visual and solve instructions",
+        "12-second practice round begins",
+        "Live match loads a different generated version of the same puzzle type",
+      ]
+    : [
+        "Queue into a 4-player lobby",
+        "Lobby gets one weighted puzzle type",
+        "All players see the puzzle visual and solve instructions",
+        "12-second practice round begins",
+        "Live match loads a different generated version of the same puzzle type",
+      ];
+  const aiHighlights = isRevengeMode
+    ? [
+        "Targets your weakest puzzle type",
+        "Leans into your rival's strongest puzzle type",
+        "Can repeat the last puzzle type they beat you on",
+        "Still uses fresh deterministic seeds for practice and live",
+      ]
+    : [
+        "Fresh seeds for practice and live every match",
+        "Adaptive difficulty based on lobby ELO",
+        "Weighted puzzle selection instead of plain random rotation",
+        "Ready to extend into deeper server-generated puzzle templates",
+      ];
 
   return (
     <div className="space-y-4 px-4 pb-4 pt-6">
@@ -34,7 +65,7 @@ export default function PlayPage() {
         </div>
         <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-right">
           <p className="font-hud text-[10px] uppercase tracking-[0.18em] text-primary">Lobby Rule</p>
-          <p className="text-lg font-black">4 Players</p>
+          <p className="text-lg font-black">{lobbySizeLabel}</p>
         </div>
       </div>
 
@@ -79,13 +110,7 @@ export default function PlayPage() {
       <section className="panel">
         <p className="hud-label">Mandatory Match Order</p>
         <div className="mt-3 grid gap-3">
-          {[
-            "Queue into a 4-player lobby",
-            "Lobby gets one randomly selected puzzle type",
-            "All players see the puzzle visual and solve instructions",
-            "12-second practice round begins",
-            "Live match loads a different generated version of the same puzzle type",
-          ].map((step, index) => (
+          {queueSteps.map((step, index) => (
             <div key={step} className="flex items-center gap-3 rounded-2xl bg-background/35 px-4 py-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-card text-sm font-black text-primary">
                 {index + 1}
@@ -107,12 +132,7 @@ export default function PlayPage() {
           </div>
         </div>
         <div className="mt-4 grid gap-2">
-          {[
-            "Fresh seeds for practice and live every match",
-            "Adaptive difficulty based on lobby ELO",
-            "Randomized puzzle pool for standard play",
-            "Ready to extend into deeper AI-generated logic templates",
-          ].map((item) => (
+          {aiHighlights.map((item) => (
             <div key={item} className="rounded-2xl bg-background/35 px-4 py-3 text-sm text-muted-foreground">
               {item}
             </div>
