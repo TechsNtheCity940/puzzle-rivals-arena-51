@@ -208,6 +208,34 @@ async function finalizeLiveRound(lobby: LobbyRow, activePlayers: PlayerRow[], ro
         best_streak: Math.max(Number(stats.best_streak), nextWinStreak),
       }).eq("user_id", entry.userId);
     }
+
+    const { data: puzzleStat } = await admin
+      .from("player_puzzle_stats")
+      .select("*")
+      .eq("user_id", entry.userId)
+      .eq("puzzle_type", round.puzzle_type)
+      .maybeSingle();
+
+    const nextMatches = Number(puzzleStat?.matches_played ?? 0) + 1;
+    const nextWins = Number(puzzleStat?.wins ?? 0) + (index === 0 ? 1 : 0);
+    const nextProgress = Number(puzzleStat?.total_progress ?? 0) + entry.liveProgress;
+    const nextSolveTotal = Number(puzzleStat?.total_solve_ms ?? 0) + (entry.solvedAtMs ?? 0);
+    const nextBestSolve =
+      entry.solvedAtMs === null
+        ? puzzleStat?.best_solve_ms ?? null
+        : puzzleStat?.best_solve_ms === null || puzzleStat?.best_solve_ms === undefined
+          ? entry.solvedAtMs
+          : Math.min(Number(puzzleStat.best_solve_ms), entry.solvedAtMs);
+
+    await admin.from("player_puzzle_stats").upsert({
+      user_id: entry.userId,
+      puzzle_type: round.puzzle_type,
+      matches_played: nextMatches,
+      wins: nextWins,
+      total_progress: nextProgress,
+      total_solve_ms: nextSolveTotal,
+      best_solve_ms: nextBestSolve,
+    });
   }
 
   const intermissionEndsAt = new Date(Date.now() + INTERMISSION_DURATION_MS).toISOString();

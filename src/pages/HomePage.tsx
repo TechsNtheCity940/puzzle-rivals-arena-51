@@ -1,35 +1,41 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Play, Eye, ChevronRight, Flame, Bell, Crown, Sparkles } from "lucide-react";
+import { Bell, ChevronRight, Crown, Eye, Flame, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import PuzzleRivalsLogo from "@/components/branding/PuzzleRivalsLogo";
+import StockAvatar from "@/components/profile/StockAvatar";
+import { fetchLeaderboard } from "@/lib/player-data";
+import { DAILY_CHALLENGES, getRankBand, getRankColor } from "@/lib/seed-data";
+import type { LeaderboardEntry } from "@/lib/types";
 import { useAuth } from "@/providers/AuthProvider";
-import {
-  PLAYERS,
-  DAILY_CHALLENGES,
-  NOTIFICATIONS,
-  LEADERBOARD,
-  getRankBand,
-  getRankColor,
-} from "@/lib/seed-data";
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const topPlayer = PLAYERS.find((player) => player.id === "u_6")!;
-  const { user } = useAuth();
+  const { user, isGuest, canSave } = useAuth();
   const rankBand = getRankBand(user?.elo ?? 0);
-  const unreadNotifs = NOTIFICATIONS.filter((notification) => !notification.isRead).length;
-  const featuredPlayers = LEADERBOARD.slice(0, 3);
+  const [featuredPlayers, setFeaturedPlayers] = useState<LeaderboardEntry[]>([]);
   const winRate = user && user.matchesPlayed > 0 ? Math.round((user.wins / user.matchesPlayed) * 100) : 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLeaderboard(3).then((entries) => {
+      if (!cancelled) {
+        setFeaturedPlayers(entries);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-4 px-4 pt-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-prestige text-lg font-black text-white shadow-[0_16px_40px_rgba(127,72,255,0.4)]">
-            {user?.username?.[0] ?? "?"}
-          </div>
+          <StockAvatar avatarId={user?.avatarId} size="sm" />
           <div>
-            <p className="text-sm font-bold leading-none">{user?.username ?? "Fresh Account"}</p>
+            <p className="text-sm font-bold leading-none">{user?.username ?? "Guest Player"}</p>
             <p className={`mt-1 text-[11px] font-hud font-semibold uppercase tracking-[0.2em] ${getRankColor(user?.rank ?? "bronze")}`}>
               {rankBand.label}
             </p>
@@ -49,11 +55,6 @@ export default function HomePage() {
             className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-card/80 text-muted-foreground"
           >
             <Bell size={18} />
-            {unreadNotifs > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-black text-primary-foreground">
-                {unreadNotifs}
-              </span>
-            )}
           </button>
         </div>
       </div>
@@ -64,19 +65,6 @@ export default function HomePage() {
         className="panel relative overflow-hidden p-5"
       >
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(191,255,0,0.18),_transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent)]" />
-        <div className="absolute inset-0 flex items-center justify-center opacity-20">
-          <div className="grid grid-cols-5 gap-2 p-8">
-            {Array.from({ length: 25 }).map((_, index) => (
-              <motion.div
-                key={index}
-                className="h-8 w-8 rounded-lg border border-border"
-                animate={{ opacity: [0.2, 0.6, 0.2] }}
-                transition={{ duration: 2, delay: index * 0.15, repeat: Infinity }}
-              />
-            ))}
-          </div>
-        </div>
-
         <div className="relative z-10 space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -88,47 +76,39 @@ export default function HomePage() {
             </span>
           </div>
 
-          <div>
-            <p className="text-3xl font-black tracking-tight">PUZZLE RIVALS</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              New accounts now start clean. Build your own rank, streak, and profile history from zero.
+          <PuzzleRivalsLogo />
+
+          <div className="rounded-2xl border border-white/5 bg-background/30 p-4 backdrop-blur-sm">
+            <p className="text-sm text-muted-foreground">
+              {isGuest
+                ? "Guests can explore and customize locally, but real stats only start once you create an account."
+                : "Real stats, profile progress, and leaderboard placement now come from your live account data."}
             </p>
           </div>
 
-          <div className="grid grid-cols-[auto,1fr] items-center gap-3 rounded-2xl border border-white/5 bg-background/30 p-3 backdrop-blur-sm">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-prestige text-xl font-black text-white">
-              {topPlayer.username[0]}
-            </div>
-            <div>
-              <p className="text-sm font-bold">{topPlayer.username}</p>
-              <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.18em] ${getRankColor(topPlayer.rank)}`}>
-                Master | ELO {topPlayer.elo}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Study a top run, then queue into your own 4-player lobby and start building real stats.
-              </p>
-            </div>
-          </div>
-
           <div className="flex gap-3">
-            <Button onClick={() => navigate("/match?mode=ranked")} variant="play" size="xl" className="flex-1">
-              <Play size={18} fill="currentColor" />
-              Play Now
+            <Button
+              onClick={() => navigate(canSave ? "/match?mode=ranked" : "/profile")}
+              variant="play"
+              size="xl"
+              className="flex-1"
+            >
+              {canSave ? "Play Now" : "Create Account"}
             </Button>
-            <Button variant="outline" size="xl" className="px-5">
+            <Button onClick={() => navigate("/profile")} variant="outline" size="xl" className="px-5">
               <Eye size={16} />
-              Watch
+              Profile
             </Button>
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-2xl bg-background/40 p-3">
               <p className="hud-label">Mode</p>
-              <p className="mt-1 text-sm font-black">Ranked</p>
+              <p className="mt-1 text-sm font-black">{canSave ? "Ranked" : "Guest"}</p>
             </div>
             <div className="rounded-2xl bg-background/40 p-3">
               <p className="hud-label">Focus</p>
-              <p className="mt-1 text-sm font-black">AI Pool</p>
+              <p className="mt-1 text-sm font-black">{user?.worstPuzzleType ? "Improve Weakness" : "Fresh Start"}</p>
             </div>
             <div className="rounded-2xl bg-background/40 p-3">
               <p className="hud-label">Season</p>
@@ -156,7 +136,7 @@ export default function HomePage() {
       {DAILY_CHALLENGES.filter((challenge) => !challenge.isCompleted).map((challenge) => (
         <button
           key={challenge.id}
-          onClick={() => navigate("/match?mode=daily")}
+          onClick={() => navigate(canSave ? "/match?mode=daily" : "/profile")}
           className="panel-interactive w-full text-left"
         >
           <div className="flex items-center gap-4">
@@ -184,7 +164,7 @@ export default function HomePage() {
             <h2 className="mt-1 text-lg font-black">Top Arena Players</h2>
           </div>
           <button
-            onClick={() => navigate("/tournaments")}
+            onClick={() => navigate("/profile")}
             className="rounded-full border border-border px-3 py-1.5 font-hud text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
           >
             View More
@@ -192,23 +172,27 @@ export default function HomePage() {
         </div>
 
         <div className="mt-4 space-y-3">
-          {featuredPlayers.map((entry, index) => (
-            <div key={entry.userId} className="flex items-center gap-3 rounded-2xl bg-background/35 p-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-prestige text-sm font-black text-white">
-                {entry.username[0]}
+          {featuredPlayers.length > 0 ? (
+            featuredPlayers.map((entry, index) => (
+              <div key={entry.userId} className="flex items-center gap-3 rounded-2xl bg-background/35 p-3">
+                <StockAvatar avatarId={entry.avatarId} size="sm" className="h-11 w-11 rounded-2xl" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold">{entry.username}</p>
+                  <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.18em] ${getRankColor(entry.rankTier)}`}>
+                    {entry.rankTier}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-black text-primary">#{index + 1}</p>
+                  <p className="text-[11px] font-hud text-muted-foreground">{entry.elo} ELO</p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold">{entry.username}</p>
-                <p className={`text-[11px] font-hud font-semibold uppercase tracking-[0.18em] ${getRankColor(entry.rankTier)}`}>
-                  {entry.rankTier}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-black text-primary">#{index + 1}</p>
-                <p className="text-[11px] font-hud text-muted-foreground">{entry.elo} ELO</p>
-              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl bg-background/35 p-4 text-sm text-muted-foreground">
+              No ranked results yet. The leaderboard will populate after the first saved-account matches finish.
             </div>
-          ))}
+          )}
         </div>
       </section>
 

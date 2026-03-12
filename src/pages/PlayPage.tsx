@@ -19,7 +19,7 @@ const MODES = [
 export default function PlayPage() {
   const navigate = useNavigate();
   const [selectedMode, setSelectedMode] = useState<PlayMode>("ranked");
-  const { user } = useAuth();
+  const { user, canSave } = useAuth();
   const rankBand = getRankBand(user?.elo ?? 0);
 
   return (
@@ -136,13 +136,13 @@ export default function PlayPage() {
       )}
 
       <Button
-        onClick={() => navigate(`/match?mode=${selectedMode}`)}
+        onClick={() => navigate(canSave ? `/match?mode=${selectedMode}` : "/profile")}
         variant="play"
         size="xl"
         className="w-full"
       >
         <Swords size={20} />
-        Play Now
+        {canSave ? "Play Now" : "Create Account To Compete"}
       </Button>
     </div>
   );

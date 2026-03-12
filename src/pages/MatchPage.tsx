@@ -35,7 +35,7 @@ export default function MatchPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const mode = (params.get("mode") || "ranked") as MatchMode;
-  const { isReady, user, refreshUser } = useAuth();
+  const { isReady, user, refreshUser, canSave } = useAuth();
 
   const [lobby, setLobby] = useState<BackendLobby | null>(null);
   const [practiceSolved, setPracticeSolved] = useState(false);
@@ -51,7 +51,7 @@ export default function MatchPage() {
   const completedRoundRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !isReady || !user) return;
+    if (!isSupabaseConfigured || !canSave || !isReady || !user) return;
 
     let cancelled = false;
     setLobby(null);
@@ -74,7 +74,7 @@ export default function MatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [isReady, mode, rematchKey, user]);
+  }, [canSave, isReady, mode, rematchKey, user]);
 
   useEffect(() => {
     if (!lobby?.id) return;
@@ -245,6 +245,32 @@ export default function MatchPage() {
             <Home size={16} />
             Back to Play
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canSave) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="panel w-full max-w-md space-y-4">
+          <div>
+            <p className="hud-label text-primary">Account Required</p>
+            <h1 className="mt-2 text-2xl font-black">Guests can explore, but ranked stats only save to accounts</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Create an account with email or Facebook from your profile, then come back here to start logging live wins, losses, and puzzle performance.
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <Button onClick={() => navigate("/profile")} variant="play" size="lg" className="flex-1">
+              Create Account
+            </Button>
+            <Button onClick={() => navigate("/play")} variant="outline" size="lg">
+              <Home size={16} />
+              Back
+            </Button>
+          </div>
         </div>
       </div>
     );

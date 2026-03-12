@@ -39,7 +39,9 @@ export const RANK_BANDS: RankBand[] = [
 // ---------- Current User ----------
 export const CURRENT_USER: UserProfile = {
   id: "u_self",
-  username: "New Challenger",
+  username: "Guest Player",
+  email: null,
+  avatarId: "blue-spinner",
   elo: 0,
   rank: "bronze",
   level: 1,
@@ -54,6 +56,9 @@ export const CURRENT_USER: UserProfile = {
   matchesPlayed: 0,
   joinedAt: "2026-03-12",
   isVip: false,
+  isGuest: true,
+  authMethod: "guest",
+  worstPuzzleType: null,
   socialLinks: {},
   puzzleSkills: {
     rotate_pipes: 0,

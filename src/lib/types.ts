@@ -14,6 +14,12 @@ export type PuzzleType =
   | "maze"
   | "memory_grid";
 
+export type StockAvatarId =
+  | "blue-spinner"
+  | "orange-cube"
+  | "violet-popper"
+  | "green-cube";
+
 export interface PuzzleConfig {
   type: PuzzleType;
   seed: number;
@@ -44,6 +50,8 @@ export interface RankBand {
 export interface UserProfile {
   id: string;
   username: string;
+  email?: string | null;
+  avatarId?: StockAvatarId;
   avatarUrl?: string;
   frameId?: string;
   themeId?: string;
@@ -61,7 +69,10 @@ export interface UserProfile {
   matchesPlayed: number;
   joinedAt: string;
   isVip: boolean;
+  isGuest?: boolean;
+  authMethod?: "guest" | "email" | "facebook";
   clanId?: string;
+  worstPuzzleType?: PuzzleType | null;
   socialLinks: {
     facebook?: string;
     tiktok?: string;
@@ -232,6 +243,7 @@ export interface LeaderboardEntry {
   rank: number;
   userId: string;
   username: string;
+  avatarId?: StockAvatarId;
   avatarUrl?: string;
   elo: number;
   rankTier: RankTier;

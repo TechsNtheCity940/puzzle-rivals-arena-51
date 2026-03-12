@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { CURRENT_USER } from "@/lib/seed-data";
+import { buildGuestUser, loadCurrentUserFromSession, saveProfileToSupabase } from "@/lib/player-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase-client";
 import type { UserProfile } from "@/lib/types";
 
@@ -14,6 +14,12 @@ interface AuthContextValue {
   isReady: boolean;
   token: string | null;
   user: UserProfile | null;
+  isGuest: boolean;
+  canSave: boolean;
+  saveProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  signInWithEmail: (email: string) => Promise<string>;
+  signInWithFacebook: () => Promise<void>;
+  signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -25,46 +31,20 @@ function sleep(ms: number) {
 
 async function fetchCurrentUser(): Promise<{ token: string | null; user: UserProfile | null }> {
   if (!supabase) {
-    return { token: null, user: CURRENT_USER };
+    return { token: null, user: buildGuestUser() };
   }
 
   const { data: sessionData } = await supabase.auth.getSession();
   const session = sessionData.session;
 
   if (!session?.user) {
-    return { token: null, user: null };
+    return { token: null, user: buildGuestUser() };
   }
 
-  const [{ data: profile }, { data: stats }] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", session.user.id).single(),
-    supabase.from("player_stats").select("*").eq("user_id", session.user.id).single(),
-  ]);
-
-  if (!profile) {
-    return { token: session.access_token, user: null };
-  }
-
+  const user = await loadCurrentUserFromSession(session);
   return {
     token: session.access_token,
-    user: {
-      ...CURRENT_USER,
-      id: profile.id,
-      username: profile.username,
-      elo: profile.elo,
-      rank: profile.rank,
-      level: profile.level,
-      xp: profile.xp,
-      xpToNext: profile.xp_to_next,
-      coins: profile.coins,
-      gems: profile.gems,
-      isVip: profile.is_vip,
-      wins: stats?.wins ?? CURRENT_USER.wins,
-      losses: stats?.losses ?? CURRENT_USER.losses,
-      matchesPlayed: stats?.matches_played ?? CURRENT_USER.matchesPlayed,
-      winStreak: stats?.win_streak ?? CURRENT_USER.winStreak,
-      bestStreak: stats?.best_streak ?? CURRENT_USER.bestStreak,
-      joinedAt: profile.created_at,
-    },
+    user: user ?? buildGuestUser(),
   };
 }
 
@@ -94,34 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured) {
           if (!mounted) return;
           setToken(null);
-          setUser(CURRENT_USER);
+          setUser(buildGuestUser());
           return;
         }
 
         const current = await loadCurrentUserWithRetry();
-        if (current.user) {
-          if (!mounted) return;
-          setToken(current.token);
-          setUser(current.user);
-          return;
-        }
-
-        const { data, error } = await supabase.auth.signInAnonymously({
-          options: {},
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        if (!data.session) {
-          throw new Error("Supabase session was not created.");
-        }
-
-        const session = await loadCurrentUserWithRetry();
         if (!mounted) return;
-        setToken(session.token);
-        setUser(session.user);
+        setToken(current.token);
+        setUser(current.user);
       } finally {
         if (mounted) {
           setIsReady(true);
@@ -158,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refreshUser() {
     if (!isSupabaseConfigured) {
       setToken(null);
-      setUser(CURRENT_USER);
+      setUser(buildGuestUser());
       return;
     }
 
@@ -167,11 +127,96 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me.user);
   }
 
+  async function saveProfile(updates: Partial<UserProfile>) {
+    setUser((current) => {
+      const next = { ...(current ?? buildGuestUser()), ...updates } as UserProfile;
+      next.socialLinks = {
+        ...(current?.socialLinks ?? {}),
+        ...(updates.socialLinks ?? {}),
+      };
+      return next;
+    });
+
+    const currentUser = user;
+    if (!currentUser || currentUser.isGuest) {
+      return;
+    }
+
+    const nextUser: UserProfile = {
+      ...currentUser,
+      ...updates,
+      socialLinks: {
+        ...currentUser.socialLinks,
+        ...(updates.socialLinks ?? {}),
+      },
+    };
+
+    await saveProfileToSupabase(nextUser);
+    await refreshUser();
+  }
+
+  async function signInWithEmail(email: string) {
+    if (!supabase) {
+      throw new Error("Supabase is not configured.");
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/profile`,
+        data: {
+          username: user?.username ?? buildGuestUser().username,
+        },
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return "Check your inbox for the Puzzle Rivals sign-in link.";
+  }
+
+  async function signInWithFacebook() {
+    if (!supabase) {
+      throw new Error("Supabase is not configured.");
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "facebook",
+      options: {
+        redirectTo: `${window.location.origin}/profile`,
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  async function signOut() {
+    if (!supabase) {
+      setToken(null);
+      setUser(buildGuestUser());
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setToken(null);
+    setUser(buildGuestUser());
+  }
+
   const value = useMemo(
     () => ({
       isReady,
       token,
       user,
+      isGuest: user?.isGuest ?? true,
+      canSave: !user?.isGuest,
+      saveProfile,
+      signInWithEmail,
+      signInWithFacebook,
+      signOut,
       refreshUser,
     }),
     [isReady, token, user],
