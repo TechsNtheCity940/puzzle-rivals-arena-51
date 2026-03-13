@@ -26,12 +26,12 @@ function requireSupabase() {
 
 export async function saveSecurityQuestions(payload: SecurityQuestionPair) {
   const client = requireSupabase();
-  const { error } = await client.functions.invoke("set-security-questions", {
+  const { data, error } = await client.functions.invoke("set-security-questions", {
     body: payload,
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error((data as { message?: string } | null)?.message ?? error.message);
   }
 }
 
@@ -42,7 +42,7 @@ export async function fetchSecurityQuestions(email: string) {
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error((data as { message?: string } | null)?.message ?? error.message);
   }
 
   return data as { questionOne: string; questionTwo: string };
@@ -50,7 +50,7 @@ export async function fetchSecurityQuestions(email: string) {
 
 export async function resetPasswordWithSecurityQuestions(email: string, payload: Omit<SecurityQuestionPair, "questionOne" | "questionTwo"> & { newPassword: string }) {
   const client = requireSupabase();
-  const { error } = await client.functions.invoke("reset-password-with-security-questions", {
+  const { data, error } = await client.functions.invoke("reset-password-with-security-questions", {
     body: {
       email,
       answerOne: payload.answerOne,
@@ -60,6 +60,6 @@ export async function resetPasswordWithSecurityQuestions(email: string, payload:
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error((data as { message?: string } | null)?.message ?? error.message);
   }
 }

@@ -128,13 +128,13 @@ export default function ProfilePage() {
     setIsWorking(true);
     setAccountStatus(null);
     try {
-      const message = await signUpWithEmail(authEmail.trim(), authPassword);
-      await saveProfile({
-        username: puzzleTag.trim() || "PuzzleTag",
-        avatarId,
-        socialLinks: { facebook: facebookHandle.trim() || undefined, tiktok: tiktokHandle.trim() || undefined },
-      });
-      try {
+      const signup = await signUpWithEmail(authEmail.trim(), authPassword);
+      if (signup.signedIn) {
+        await saveProfile({
+          username: puzzleTag.trim() || "PuzzleTag",
+          avatarId,
+          socialLinks: { facebook: facebookHandle.trim() || undefined, tiktok: tiktokHandle.trim() || undefined },
+        });
         await saveSecurityQuestions({
           questionOne: signupQuestionOne,
           answerOne: signupAnswerOne,
@@ -143,10 +143,10 @@ export default function ProfilePage() {
         });
         await refreshUser();
         setSecurityStatus("Security questions saved.");
-      } catch {
-        setSecurityStatus("Finish setting your security questions after your first successful sign-in if email confirmation is enabled.");
+      } else {
+        setSecurityStatus("Sign in after confirming your email, then save your security questions from this page.");
       }
-      setAccountStatus(message);
+      setAccountStatus(signup.message);
       setAuthPassword("");
       setConfirmPassword("");
     } catch (error) {

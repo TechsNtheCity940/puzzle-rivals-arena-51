@@ -18,7 +18,10 @@ interface AuthContextValue {
   isGuest: boolean;
   canSave: boolean;
   saveProfile: (updates: Partial<UserProfile>) => Promise<void>;
-  signUpWithEmail: (email: string, password: string) => Promise<string>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+  ) => Promise<{ message: string; signedIn: boolean }>;
   signInWithEmail: (email: string, password: string) => Promise<string>;
   signInWithFacebook: () => Promise<void>;
   signInWithTikTok: () => Promise<void>;
@@ -197,10 +200,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (data.session) {
       await refreshUser();
-      return "Account created. You are now signed in.";
+      return {
+        message: "Account created. You are now signed in.",
+        signedIn: true,
+      };
     }
 
-    return "Account created. Confirm your email if your Supabase project requires email confirmation, then sign in with your password.";
+    return {
+      message:
+        "Account created. Confirm your email if your Supabase project requires email confirmation, then sign in with your password.",
+      signedIn: false,
+    };
   }
 
   async function signInWithEmail(email: string, password: string) {
