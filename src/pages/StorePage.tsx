@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Crown, ExternalLink, ShoppingBag } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { Check, Crown, ExternalLink, ShoppingBag } from "lucide-react";
+import PageHeader from "@/components/layout/PageHeader";
+import PuzzleTileButton from "@/components/layout/PuzzleTileButton";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/providers/AuthProvider";
@@ -34,10 +36,7 @@ function formatPrice(item: StorefrontItem) {
   return "Unavailable";
 }
 
-function clearCheckoutParams(
-  params: URLSearchParams,
-  setParams: ReturnType<typeof useSearchParams>[1],
-) {
+function clearCheckoutParams(params: URLSearchParams, setParams: ReturnType<typeof useSearchParams>[1]) {
   const next = new URLSearchParams(params);
   next.delete("checkout");
   next.delete("purchase");
@@ -47,6 +46,7 @@ function clearCheckoutParams(
 
 export default function StorePage() {
   const [tab, setTab] = useState<Tab>("all");
+  const [page, setPage] = useState(0);
   const [snapshot, setSnapshot] = useState<StorefrontSnapshot>({ items: [], vipProduct: null, wallet: null });
   const [isLoading, setIsLoading] = useState(true);
   const [busyProductId, setBusyProductId] = useState<string | null>(null);
@@ -64,8 +64,7 @@ export default function StorePage() {
           setSnapshot(next);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to load store.";
-        toast.error(message);
+        toast.error(error instanceof Error ? error.message : "Failed to load store.");
       } finally {
         if (active) {
           setIsLoading(false);
@@ -78,6 +77,10 @@ export default function StorePage() {
       active = false;
     };
   }, [user]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [tab]);
 
   useEffect(() => {
     const checkoutState = params.get("checkout");
@@ -94,7 +97,6 @@ export default function StorePage() {
     }
 
     let active = true;
-
     async function capture() {
       setBusyProductId(params.get("product") ?? "paypal");
       try {
@@ -106,8 +108,7 @@ export default function StorePage() {
         }
         toast.success("Purchase completed.");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to capture PayPal order.";
-        toast.error(message);
+        toast.error(error instanceof Error ? error.message : "Failed to capture PayPal order.");
       } finally {
         if (active) {
           setBusyProductId(null);
@@ -126,10 +127,14 @@ export default function StorePage() {
     () => (tab === "all" ? snapshot.items : snapshot.items.filter((item) => item.category === tab)),
     [snapshot.items, tab],
   );
+  const pageCount = Math.max(1, Math.ceil(items.length / 4));
+  const visibleItems = items.slice(page * 4, page * 4 + 4);
+  const vip = snapshot.vipProduct;
+  const vipButtonLabel = snapshot.wallet?.isVip ? "Extend VIP" : "Subscribe";
 
   async function handlePurchase(item: StorefrontItem) {
     if (!canSave) {
-      toast.error("Sign in with email or Facebook before making purchases.");
+      toast.error("Sign in before making purchases.");
       return;
     }
 
@@ -146,127 +151,124 @@ export default function StorePage() {
       setSnapshot(await fetchStorefront(user));
       toast.success(`${item.name} added to your account.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Purchase failed.";
-      toast.error(message);
+      toast.error(error instanceof Error ? error.message : "Purchase failed.");
     } finally {
       setBusyProductId(null);
     }
   }
 
-  const vip = snapshot.vipProduct;
-  const vipButtonLabel = snapshot.wallet?.isVip ? "Extend VIP" : "Subscribe";
-
   return (
-    <div className="space-y-4 px-4 pb-4 pt-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="hud-label">Customization Market</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight">Store</h1>
-        </div>
-        <div className="rounded-2xl border border-border bg-card/70 px-4 py-3 text-right">
-          <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Wallet</p>
-          <p className="text-sm font-black">{snapshot.wallet?.coins?.toLocaleString() ?? 0} Coins</p>
-          <p className="text-sm font-black text-primary">{snapshot.wallet?.gems ?? 0} Gems</p>
-          <p className="text-[11px] text-muted-foreground">{snapshot.wallet?.hintBalance ?? 0} hints banked</p>
-        </div>
-      </div>
+    <div className="page-screen">
+      <div className="page-stack">
+        <PageHeader
+          eyebrow="Customization Market"
+          title="Store"
+          subtitle={canSave ? "Live purchases and account-bound items." : "Browse as guest. Purchases require sign-in."}
+          right={
+            <div className="command-panel-soft grid grid-cols-2 gap-2 px-3 py-3">
+              <div className="text-center">
+                <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Coins</p>
+                <p className="text-sm font-black text-coin">{snapshot.wallet?.coins?.toLocaleString() ?? 0}</p>
+              </div>
+              <div className="text-center">
+                <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Gems</p>
+                <p className="text-sm font-black text-primary">{snapshot.wallet?.gems ?? 0}</p>
+              </div>
+            </div>
+          }
+        />
 
-      {!canSave && (
-        <section className="panel border-primary/20 bg-primary/5">
-          <p className="text-sm font-semibold text-primary">Guest mode can browse the store, but purchases only save on signed-in accounts.</p>
-        </section>
-      )}
-
-      <section className="panel relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-prestige opacity-90" />
-        <div className="relative">
-          <div className="mb-4 flex items-center gap-3">
-            <Crown size={24} className="text-white" />
-            <div className="flex-1">
-              <p className="text-sm font-black text-white">{vip?.name ?? "VIP Membership"}</p>
-              <p className="text-[11px] font-hud uppercase tracking-[0.16em] text-white/75">
-                {vip ? formatPrice(vip) : `$${VIP_MEMBERSHIP.priceUsd.toFixed(2)}/month`}
+        <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_auto_1fr] gap-3 overflow-hidden p-3">
+          <div className="command-panel-soft grid grid-cols-[1fr_auto] gap-3 p-3">
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <img src="/brand/puzzle-rivals-logo.png" alt="Puzzle Rivals" className="h-8 w-8 rounded-full object-cover" draggable={false} />
+                <div>
+                  <p className="hud-label text-primary">VIP Membership</p>
+                  <p className="text-base font-black">{vip?.name ?? "VIP Membership"}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {vip ? formatPrice(vip) : `$${VIP_MEMBERSHIP.priceUsd.toFixed(2)}/month`} • {snapshot.wallet?.hintBalance ?? 0} hints banked
               </p>
-              {snapshot.wallet?.vipExpiresAt && (
-                <p className="mt-1 text-[11px] text-white/75">
-                  Active until {new Date(snapshot.wallet.vipExpiresAt).toLocaleDateString()}
-                </p>
-              )}
             </div>
             <Button
-              variant="secondary"
-              className="rounded-2xl bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-background hover:bg-white/90"
+              variant="prestige"
+              size="lg"
+              className="self-center"
               disabled={!vip || busyProductId === vip.id}
               onClick={() => vip && handlePurchase(vip)}
             >
+              <Crown size={14} />
               {busyProductId === vip?.id ? "Working..." : vipButtonLabel}
             </Button>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {VIP_MEMBERSHIP.perks.slice(0, 4).map((perk) => (
-              <div key={perk} className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-white">
-                <Check size={12} className="flex-shrink-0" />
-                <span className="text-[11px] font-hud leading-snug">{perk}</span>
-              </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            {TABS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => setTab(entry.id)}
+                className={`segment-chip ${tab === entry.id ? "segment-chip-active" : ""}`}
+              >
+                {entry.label}
+              </button>
             ))}
           </div>
-        </div>
-      </section>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            onClick={() => setTab(entry.id)}
-            className={`flex-shrink-0 rounded-full px-4 py-2 font-hud text-xs font-semibold uppercase tracking-[0.18em] transition-all ${
-              tab === entry.id ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {items.map((item) => (
-          <div key={item.id} className={`surface overflow-hidden ${item.isFeatured ? "border-primary/30" : ""}`}>
-            <div className="relative flex h-32 items-center justify-center bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]">
-              <ShoppingBag size={34} className="text-muted-foreground/30" />
-              {item.isFeatured && (
-                <span className="absolute left-3 top-3 rounded-full bg-primary px-2 py-1 font-hud text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground">
-                  Featured
-                </span>
-              )}
-              <span className="absolute right-3 top-3 text-[10px] font-hud font-semibold text-muted-foreground">
-                {romanNumeral(item.rarity)}
-              </span>
-              {item.isOwned && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm">
-                  <Check size={24} className="text-primary" />
-                </div>
-              )}
+          <div className="grid min-h-0 grid-rows-[1fr_auto] gap-3">
+            <div className="grid min-h-0 grid-cols-2 gap-3">
+              {visibleItems.map((item) => (
+                <PuzzleTileButton
+                  key={item.id}
+                  title={item.name}
+                  description={item.description}
+                  icon={ShoppingBag}
+                  right={
+                    item.isOwned ? (
+                      <div className="rounded-full bg-primary/12 p-2 text-primary">
+                        <Check size={14} />
+                      </div>
+                    ) : (
+                      <div className="text-right">
+                        <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                          Tier {romanNumeral(item.rarity)}
+                        </p>
+                        <p className="text-xs font-black text-primary">{formatPrice(item)}</p>
+                      </div>
+                    )
+                  }
+                  className="h-full"
+                  onClick={() => void handlePurchase(item)}
+                  disabled={isLoading || busyProductId === item.id || item.isOwned}
+                />
+              ))}
             </div>
-            <div className="p-3">
-              <p className="text-sm font-black leading-tight">{item.name}</p>
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-              <div className="mt-3">
-                {item.isOwned ? (
-                  <span className="font-hud text-xs font-semibold uppercase tracking-[0.16em] text-primary">Owned</span>
-                ) : (
-                  <Button
-                    className="h-9 w-full rounded-2xl text-[11px] font-black uppercase tracking-[0.14em]"
-                    variant={item.priceUsd ? "play" : "outline"}
-                    disabled={isLoading || busyProductId === item.id}
-                    onClick={() => void handlePurchase(item)}
-                  >
-                    {busyProductId === item.id ? "Working..." : item.priceUsd ? <ExternalLink size={10} /> : null}
-                    {busyProductId === item.id ? "" : formatPrice(item)}
-                  </Button>
-                )}
+
+            <div className="command-panel-soft flex items-center justify-between px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                Showing {visibleItems.length ? page * 4 + 1 : 0}-{Math.min((page + 1) * 4, items.length)} of {items.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>
+                  <ChevronLeft size={14} />
+                </Button>
+                <span className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">
+                  {page + 1}/{pageCount}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pageCount - 1}
+                  onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                >
+                  <ChevronRight size={14} />
+                </Button>
               </div>
             </div>
           </div>
-        ))}
+        </section>
       </div>
     </div>
   );

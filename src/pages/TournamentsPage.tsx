@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { Trophy, Users, Zap, Radar } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Radar, Trophy, Users, Zap } from "lucide-react";
+import PageHeader from "@/components/layout/PageHeader";
+import PuzzleTileButton from "@/components/layout/PuzzleTileButton";
 import { TOURNAMENTS, PUZZLE_TYPES } from "@/lib/seed-data";
 
 type Tab = "upcoming" | "live" | "completed";
@@ -7,110 +9,110 @@ type Tab = "upcoming" | "live" | "completed";
 export default function TournamentsPage() {
   const [tab, setTab] = useState<Tab>("live");
 
-  const filtered = TOURNAMENTS.filter((t) => t.status === tab);
+  const filtered = useMemo(() => TOURNAMENTS.filter((tournament) => tournament.status === tab), [tab]);
   const tabs: { id: Tab; label: string }[] = [
     { id: "live", label: "Live" },
     { id: "upcoming", label: "Upcoming" },
     { id: "completed", label: "Completed" },
   ];
-  const liveTournament = TOURNAMENTS.find((t) => t.status === "live");
+  const liveTournament = TOURNAMENTS.find((tournament) => tournament.status === "live");
+  const visible = filtered.slice(0, 3);
 
   return (
-    <div className="space-y-4 px-4 pb-4 pt-6">
-      <div>
-        <p className="hud-label">Competitive Events</p>
-        <h1 className="mt-1 text-3xl font-black tracking-tight">Tournaments</h1>
-      </div>
+    <div className="page-screen">
+      <div className="page-stack">
+        <PageHeader
+          eyebrow="Competitive Circuit"
+          title="Tournaments"
+          subtitle="Fast snapshots of active, upcoming, and finished events."
+          right={
+            <div className="command-panel-soft px-4 py-3 text-center">
+              <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">Events</p>
+              <p className="text-sm font-black">{TOURNAMENTS.length}</p>
+            </div>
+          }
+        />
 
-      <div className="flex gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 rounded-full px-4 py-2.5 font-hud text-xs font-semibold uppercase tracking-[0.18em] transition-all ${
-              tab === t.id ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {liveTournament && (
-        <section className="panel relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(191,255,0,0.18),_transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.04),transparent)]" />
-          <div className="relative flex items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12">
-              <Trophy size={24} className="text-primary" />
-            </div>
-            <div className="flex-1">
-              <p className="hud-label text-primary">Featured Event</p>
-              <p className="mt-1 text-lg font-black">{liveTournament.name}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Live bracket, elimination rounds, rapid entry lock.</p>
-            </div>
-            <div className="rounded-2xl bg-primary/12 px-3 py-2 text-center">
-              <p className="font-hud text-[10px] uppercase tracking-[0.18em] text-primary">Live</p>
-              <p className="text-sm font-black">{liveTournament.currentPlayers}</p>
-            </div>
+        <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_auto_1fr] gap-3 overflow-hidden p-3">
+          <div className="grid grid-cols-3 gap-2">
+            {tabs.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => setTab(entry.id)}
+                className={`segment-chip ${tab === entry.id ? "segment-chip-active" : ""}`}
+              >
+                {entry.label}
+              </button>
+            ))}
           </div>
-          <div className="relative mt-4 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-2xl bg-background/35 p-3">
-              <p className="hud-label">Prize</p>
-              <p className="mt-1 text-sm font-black">🪙 {liveTournament.prizePool.toLocaleString()}</p>
-            </div>
-            <div className="rounded-2xl bg-background/35 p-3">
-              <p className="hud-label">Entry</p>
-              <p className="mt-1 text-sm font-black">{liveTournament.entryFee || "Free"}</p>
-            </div>
-            <div className="rounded-2xl bg-background/35 p-3">
-              <p className="hud-label">Status</p>
-              <p className="mt-1 text-sm font-black">Active</p>
-            </div>
-          </div>
-        </section>
-      )}
 
-      <div className="space-y-3">
-        {filtered.length === 0 && (
-          <p className="panel text-center text-sm text-muted-foreground">No {tab} tournaments</p>
-        )}
-        {filtered.map((t) => {
-          const puzzle = PUZZLE_TYPES.find((p) => p.type === t.puzzleType);
-          return (
-            <button key={t.id} className="panel-interactive w-full text-left">
-              <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-background/40 text-2xl">
-                  {puzzle?.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-base font-black">{t.name}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <span className="flex items-center gap-1 text-[11px] font-hud text-muted-foreground">
-                      <Users size={10} />
-                      {t.currentPlayers}/{t.maxPlayers}
-                    </span>
-                    <span className="flex items-center gap-1 text-[11px] font-hud text-muted-foreground">
-                      <Zap size={10} />
-                      {t.entryFee > 0 ? `${t.entryFee} coins` : "Free"}
-                    </span>
-                    <span className="flex items-center gap-1 text-[11px] font-hud text-muted-foreground">
-                      <Radar size={10} />
-                      {t.status}
-                    </span>
+          {liveTournament ? (
+            <div className="command-panel-soft grid grid-cols-[1fr_auto] gap-3 p-3">
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <img
+                    src="/brand/puzzle-rivals-logo.png"
+                    alt="Puzzle Rivals"
+                    className="h-8 w-8 rounded-full object-cover"
+                    draggable={false}
+                  />
+                  <div>
+                    <p className="hud-label text-primary">Featured Event</p>
+                    <p className="text-base font-black">{liveTournament.name}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-black text-primary">🪙 {t.prizePool.toLocaleString()}</p>
-                  {t.status === "upcoming" && (
-                    <p className="mt-1 text-[11px] font-hud text-muted-foreground">
-                      {new Date(t.startsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                    </p>
-                  )}
+                <p className="text-xs text-muted-foreground">Live bracket, compact watchlist, rapid entry lock.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="compact-metric min-w-[78px] text-center">
+                  <span className="hud-label">Prize</span>
+                  <span className="text-sm font-black text-primary">{liveTournament.prizePool.toLocaleString()}</span>
+                </div>
+                <div className="compact-metric min-w-[78px] text-center">
+                  <span className="hud-label">Entry</span>
+                  <span className="text-sm font-black">{liveTournament.entryFee || "Free"}</span>
+                </div>
+                <div className="compact-metric min-w-[78px] text-center">
+                  <span className="hud-label">Players</span>
+                  <span className="text-sm font-black">{liveTournament.currentPlayers}</span>
                 </div>
               </div>
-            </button>
-          );
-        })}
+            </div>
+          ) : null}
+
+          <div className="grid min-h-0 gap-3">
+            {visible.length === 0 ? (
+              <div className="command-panel-soft flex min-h-[120px] items-center justify-center p-6 text-sm text-muted-foreground">
+                No {tab} tournaments.
+              </div>
+            ) : (
+              visible.map((tournament) => {
+                const puzzle = PUZZLE_TYPES.find((entry) => entry.type === tournament.puzzleType);
+                return (
+                  <PuzzleTileButton
+                    key={tournament.id}
+                    title={tournament.name}
+                    description={`${puzzle?.label ?? "Puzzle"} • ${tournament.status}`}
+                    emoji={puzzle?.icon}
+                    right={
+                      <div className="space-y-1 text-right">
+                        <div className="flex items-center justify-end gap-1 text-[10px] font-hud uppercase tracking-[0.16em] text-muted-foreground">
+                          <Users size={10} />
+                          {tournament.currentPlayers}/{tournament.maxPlayers}
+                        </div>
+                        <div className="flex items-center justify-end gap-1 text-[10px] font-hud uppercase tracking-[0.16em] text-primary">
+                          <Zap size={10} />
+                          {tournament.entryFee > 0 ? `${tournament.entryFee} coins` : "free"}
+                        </div>
+                      </div>
+                    }
+                  />
+                );
+              })
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

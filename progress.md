@@ -15,3 +15,12 @@ Original prompt: for the store, i want both types of transactions, however we ne
 - Smoke result: `/profile` renders, no console errors, and the new signup/login/security-question UI is visible.
 - Fixed a stale-auth bug in `saveProfile` so the first save immediately after signup/login uses the authenticated session instead of the previous guest snapshot.
 - Corrected a migration version collision: auth/security bootstrap is now `20260312000008_auth_security_and_profile_bootstrap.sql` because `20260312000007` is already used by storefront/entitlements on the remote.
+- Current task: major frontend UI redesign for compact no-scroll screens using the frontend-ui-designer skill.
+- Direction chosen: compact arcade command-deck with floating command panels, puzzle-cut action tiles, and persistent logo presence on every route.
+- Added shared compact layout system in `src/index.css`, plus reusable `PageHeader` and `PuzzleTileButton` components.
+- Refactored Home, Play, Tournaments, Store, Season, Profile, and NotFound into single-screen layouts designed to fit within the viewport without page scrolling.
+- Updated the app shell so the content area is constrained to the viewport and the fixed header/nav work with the compact layouts.
+- Validation: `npm run build` and `npm run build:server` pass after the redesign.
+- Browser smoke: mobile viewport checks on `/`, `/play`, `/tournaments`, `/store`, `/season`, and `/profile` all reported no vertical scrolling and no console errors.
+- Screenshots were captured under `tmp/ui-smoke/` for manual review during this pass.
+- Follow-up idea: the match route still uses its older layout language; if visual consistency matters, refactor match HUD/panels into the same command-deck system next.

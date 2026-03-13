@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { useMemo, useState } from "react";
 import { Crown, Flame, Sparkles, Swords, Target, Users, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuthDialog } from "@/components/auth/AuthDialogContext";
+import PageHeader from "@/components/layout/PageHeader";
+import PuzzleTileButton from "@/components/layout/PuzzleTileButton";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { DAILY_CHALLENGES, getRankBand, getRankColor } from "@/lib/seed-data";
@@ -9,162 +11,141 @@ import { DAILY_CHALLENGES, getRankBand, getRankColor } from "@/lib/seed-data";
 type PlayMode = "ranked" | "casual" | "royale" | "revenge" | "challenge" | "daily";
 
 const MODES = [
-  { id: "ranked" as PlayMode, label: "Ranked", icon: Swords, desc: "4-player standard ladder lobby" },
-  { id: "casual" as PlayMode, label: "Casual", icon: Zap, desc: "Generated puzzles without rank pressure" },
-  { id: "royale" as PlayMode, label: "Puzzle Royale", icon: Crown, desc: "Same lobby rule, bigger stakes" },
-  { id: "revenge" as PlayMode, label: "Revenge", icon: Flame, desc: "2-player rematch weighted by rivalry data" },
-  { id: "challenge" as PlayMode, label: "Challenge", icon: Target, desc: "Practice into live match flow" },
-  { id: "daily" as PlayMode, label: "Daily 1%", icon: Users, desc: "Generated daily elite variant" },
+  { id: "ranked" as PlayMode, label: "Ranked", icon: Swords, desc: "4-player ladder lobby" },
+  { id: "casual" as PlayMode, label: "Casual", icon: Zap, desc: "No-rank generated runs" },
+  { id: "royale" as PlayMode, label: "Royale", icon: Crown, desc: "High stakes elimination" },
+  { id: "revenge" as PlayMode, label: "Revenge", icon: Flame, desc: "2-player rivalry duel" },
+  { id: "challenge" as PlayMode, label: "Challenge", icon: Target, desc: "Train your weak spots" },
+  { id: "daily" as PlayMode, label: "Daily", icon: Users, desc: "Elite daily variant" },
 ];
 
 export default function PlayPage() {
   const navigate = useNavigate();
-  const [selectedMode, setSelectedMode] = useState<PlayMode>("ranked");
+  const { openSignUp } = useAuthDialog();
   const { user, canSave, isReady } = useAuth();
+  const [selectedMode, setSelectedMode] = useState<PlayMode>("ranked");
   const rankBand = getRankBand(user?.elo ?? 0);
-  const isRevengeMode = selectedMode === "revenge";
-  const lobbySizeLabel = isRevengeMode ? "2 Players" : "4 Players";
-  const queueSteps = isRevengeMode
-    ? [
-        "Queue into a 2-player revenge duel",
-        "The selector weights your weakest puzzle, their strongest puzzle, and your last head-to-head loss",
-        "Both players see the puzzle visual and solve instructions",
-        "12-second practice round begins",
-        "Live match loads a different generated version of the same puzzle type",
-      ]
-    : [
-        "Queue into a 4-player lobby",
-        "Lobby gets one weighted puzzle type",
-        "All players see the puzzle visual and solve instructions",
-        "12-second practice round begins",
-        "Live match loads a different generated version of the same puzzle type",
-      ];
-  const aiHighlights = isRevengeMode
-    ? [
-        "Targets your weakest puzzle type",
-        "Leans into your rival's strongest puzzle type",
-        "Can repeat the last puzzle type they beat you on",
-        "Still uses fresh deterministic seeds for practice and live",
-      ]
-    : [
-        "Fresh seeds for practice and live every match",
-        "Adaptive difficulty based on lobby ELO",
-        "Weighted puzzle selection instead of plain random rotation",
-        "Ready to extend into deeper server-generated puzzle templates",
-      ];
+
+  const selectedConfig = useMemo(() => {
+    const revenge = selectedMode === "revenge";
+    return {
+      lobby: revenge ? "2 Players" : "4 Players",
+      steps: revenge
+        ? [
+            "Targets your weak spot",
+            "Weights their strongest category",
+            "Can repeat last loss puzzle",
+          ]
+        : ["Weighted puzzle pick", "12s practice warm-up", "Fresh live seed"],
+    };
+  }, [selectedMode]);
 
   return (
-    <div className="space-y-4 px-4 pb-4 pt-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="hud-label">Standard Match Flow</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight">Play Now</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            <span className={getRankColor(user?.rank ?? "bronze")}>{rankBand.label}</span> - ELO {user?.elo ?? 0}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-right">
-          <p className="font-hud text-[10px] uppercase tracking-[0.18em] text-primary">Lobby Rule</p>
-          <p className="text-lg font-black">{lobbySizeLabel}</p>
-        </div>
-      </div>
+    <div className="page-screen">
+      <div className="page-stack">
+        <PageHeader
+          eyebrow="Queue Select"
+          title="Play Now"
+          subtitle={`${rankBand.label} - ELO ${user?.elo ?? 0}`}
+          right={
+            <div className="command-panel-soft px-4 py-3 text-right">
+              <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">Lobby Rule</p>
+              <p className="text-sm font-black">{selectedConfig.lobby}</p>
+            </div>
+          }
+        />
 
-      <section className="panel">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="hud-label">Queue Type</p>
-            <h2 className="mt-1 text-lg font-black">Pick the match mode</h2>
+        <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_auto_1fr_auto] gap-3 overflow-hidden p-3">
+          <div className="grid grid-cols-2 gap-2">
+            {MODES.map((mode) => (
+              <PuzzleTileButton
+                key={mode.id}
+                icon={mode.icon}
+                title={mode.label}
+                description={mode.desc}
+                active={selectedMode === mode.id}
+                onClick={() => setSelectedMode(mode.id)}
+                right={
+                  <span className={`font-hud text-[10px] uppercase tracking-[0.16em] ${selectedMode === mode.id ? "text-primary" : "text-muted-foreground"}`}>
+                    {selectedMode === mode.id ? "Armed" : "Queue"}
+                  </span>
+                }
+              />
+            ))}
           </div>
-          <Sparkles size={18} className="text-accent" />
-        </div>
-        <div className="mt-4 space-y-3">
-          {MODES.map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => setSelectedMode(mode.id)}
-              className={`w-full rounded-[24px] border p-4 text-left transition-all ${
-                selectedMode === mode.id
-                  ? "border-primary/30 bg-primary/10 shadow-[0_18px_40px_rgba(191,255,0,0.14)]"
-                  : "border-border bg-background/30"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                  selectedMode === mode.id ? "bg-gradient-play text-primary-foreground" : "bg-card"
-                }`}>
-                  <mode.icon size={18} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold">{mode.label}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{mode.desc}</p>
-                </div>
-                {selectedMode === mode.id && (
-                  <motion.div layoutId="mode-check" className="h-3 w-3 rounded-full bg-primary" />
-                )}
+
+          <div className="grid grid-cols-3 gap-3">
+            {selectedConfig.steps.map((step) => (
+              <div key={step} className="command-panel-soft flex items-center justify-center px-3 py-3 text-center">
+                <p className="text-xs font-semibold text-muted-foreground">{step}</p>
               </div>
-            </button>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
 
-      <section className="panel">
-        <p className="hud-label">Mandatory Match Order</p>
-        <div className="mt-3 grid gap-3">
-          {queueSteps.map((step, index) => (
-            <div key={step} className="flex items-center gap-3 rounded-2xl bg-background/35 px-4 py-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-card text-sm font-black text-primary">
-                {index + 1}
+          <div className="grid min-h-0 grid-cols-[1.1fr_0.9fr] gap-3">
+            <div className="command-panel-soft min-h-0 p-3">
+              <div className="mb-3 flex items-center gap-2">
+                <Sparkles size={16} className="text-primary" />
+                <div>
+                  <p className="hud-label">Procedural Match AI</p>
+                  <p className="text-sm font-black">Deterministic variety, live fairness</p>
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">{step}</p>
+              <div className="grid gap-2">
+                {(selectedMode === "revenge"
+                  ? [
+                      "Chooses between your worst puzzle type and your rival's best.",
+                      "Can replay the last puzzle category they used to beat you.",
+                      "Fresh practice/live seeds keep the duel fair.",
+                    ]
+                  : [
+                      "Difficulty tracks lobby skill bands.",
+                      "Puzzle type selection is weighted, not random spam.",
+                      "Practice and live always share category, never exact layout.",
+                    ]).map((item) => (
+                  <div key={item} className="rounded-2xl bg-black/20 px-3 py-2 text-xs text-muted-foreground">
+                    {item}
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-      </section>
 
-      <section className="panel overflow-hidden">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="hud-label text-primary">AI Puzzle Generation</p>
-            <h2 className="mt-1 text-lg font-black">Procedural matches that keep changing</h2>
-          </div>
-            <div className="rounded-2xl bg-accent/10 px-3 py-2 font-hud text-xs font-semibold uppercase tracking-[0.18em] text-accent">
-            Infinite
-          </div>
-        </div>
-        <div className="mt-4 grid gap-2">
-          {aiHighlights.map((item) => (
-            <div key={item} className="rounded-2xl bg-background/35 px-4 py-3 text-sm text-muted-foreground">
-              {item}
+            <div className="grid min-h-0 grid-rows-[auto_1fr] gap-3">
+              <div className="command-panel-soft p-3">
+                <p className="hud-label">Today’s Variant</p>
+                <p className="mt-1 text-sm font-black">{DAILY_CHALLENGES[0]?.title ?? "Daily 1%"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {DAILY_CHALLENGES[0]?.description ?? "Generated elite challenge."}
+                </p>
+              </div>
+              <div className="command-panel-soft min-h-0 p-3">
+                <p className="hud-label">Selected Mode</p>
+                <p className="mt-1 text-xl font-black">{MODES.find((entry) => entry.id === selectedMode)?.label}</p>
+                <p className={`mt-2 font-hud text-[10px] uppercase tracking-[0.18em] ${getRankColor(user?.rank ?? "bronze")}`}>
+                  Active player band: {rankBand.label}
+                </p>
+              </div>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      {DAILY_CHALLENGES[0] && (
-        <section className="panel overflow-hidden">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="hud-label text-primary">Daily 1%</p>
-              <h2 className="mt-1 text-lg font-black">{DAILY_CHALLENGES[0].title}</h2>
-            </div>
-            <div className="rounded-2xl bg-primary/10 px-3 py-2 font-hud text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              Generated
-            </div>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">{DAILY_CHALLENGES[0].description}</p>
+          <Button
+            onClick={() => {
+              if (canSave) {
+                navigate(`/match?mode=${selectedMode}`);
+                return;
+              }
+              openSignUp();
+            }}
+            variant="play"
+            size="xl"
+            className="w-full"
+            disabled={!isReady || !user}
+          >
+            <Swords size={18} />
+            {!isReady || !user ? "Syncing Account..." : canSave ? "Launch Match" : "Sign Up To Compete"}
+          </Button>
         </section>
-      )}
-
-      <Button
-        onClick={() => navigate(canSave ? `/match?mode=${selectedMode}` : "/profile")}
-        variant="play"
-        size="xl"
-        className="w-full"
-        disabled={!isReady || !user}
-      >
-        <Swords size={20} />
-        {!isReady || !user ? "Syncing Account..." : canSave ? "Play Now" : "Create Account To Compete"}
-      </Button>
+      </div>
     </div>
   );
 }

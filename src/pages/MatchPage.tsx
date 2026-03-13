@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Clock, Home, RotateCcw, Share2, Sparkles } from "lucide-react";
+import { useAuthDialog } from "@/components/auth/AuthDialogContext";
 import { Button } from "@/components/ui/button";
 import MatchPuzzleBoard from "@/components/match/MatchPuzzleBoard";
 import { subscribeToLobby, supabaseApi } from "@/lib/api-client";
@@ -34,6 +35,7 @@ function rankPlayers(players: BackendLobbyPlayer[]) {
 export default function MatchPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { openSignUp } = useAuthDialog();
   const mode = (params.get("mode") || "ranked") as MatchMode;
   const { isReady, user, refreshUser, canSave } = useAuth();
 
@@ -258,12 +260,13 @@ export default function MatchPage() {
             <p className="hud-label text-primary">Account Required</p>
             <h1 className="mt-2 text-2xl font-black">Guests can explore, but ranked stats only save to accounts</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Create an account with email or Facebook from your profile, then come back here to start logging live wins, losses, and puzzle performance.
+              Create an account from the top-right sign-up button, then come back here to start logging live wins,
+              losses, and puzzle performance.
             </p>
           </div>
 
           <div className="flex gap-3">
-            <Button onClick={() => navigate("/profile")} variant="play" size="lg" className="flex-1">
+            <Button onClick={openSignUp} variant="play" size="lg" className="flex-1">
               Create Account
             </Button>
             <Button onClick={() => navigate("/play")} variant="outline" size="lg">
