@@ -8,6 +8,7 @@ import {
 } from "@/lib/puzzle-engine";
 import type { MatchPlayablePuzzleType } from "@/lib/ai-puzzle-service";
 import type { PuzzleSubmission } from "@/lib/backend";
+import { Button } from "@/components/ui/button";
 
 interface MatchPuzzleBoardProps {
   puzzleType: MatchPlayablePuzzleType;

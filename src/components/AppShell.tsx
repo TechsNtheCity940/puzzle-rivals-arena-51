@@ -11,7 +11,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { user, isGuest, isReady } = useAuth();
   const { openSignIn, openSignUp } = useAuthDialog();
-  const hideHeader = location.pathname.startsWith("/match");
+  const isMatchRoute = location.pathname.startsWith("/match");
+  const hideHeader = isMatchRoute;
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background">
@@ -68,7 +69,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className={`relative mx-auto flex h-[100dvh] w-full max-w-md flex-col overflow-hidden pb-24 ${hideHeader ? "" : "pt-20"}`}>
+      <main className={`relative mx-auto flex h-[100dvh] w-full max-w-md flex-col overflow-hidden ${isMatchRoute ? "pb-0" : "pb-24"} ${hideHeader ? "" : "pt-20"}`}>
         {children}
       </main>
       <BottomNav />

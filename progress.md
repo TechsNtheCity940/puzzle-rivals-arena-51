@@ -24,3 +24,8 @@ Original prompt: for the store, i want both types of transactions, however we ne
 - Browser smoke: mobile viewport checks on `/`, `/play`, `/tournaments`, `/store`, `/season`, and `/profile` all reported no vertical scrolling and no console errors.
 - Screenshots were captured under `tmp/ui-smoke/` for manual review during this pass.
 - Follow-up idea: the match route still uses its older layout language; if visual consistency matters, refactor match HUD/panels into the same command-deck system next.
+- Current task: refactor the `/match` route into the compact command-deck style without changing matchmaking or gameplay logic.
+- Rebuilt `src/pages/MatchPage.tsx` around shared `PageHeader`, puzzle-cut tiles, command panels, timer clusters, and compact HUD metrics for all visible match states.
+- Added reusable match HUD helpers in `src/index.css` and removed the unused bottom-nav spacing from `AppShell` on match routes so the arena can use the full viewport height.
+- Validation: `npm run build`, `npm run build:server`, and `npx vitest run src/test/match-page-states.test.tsx` all pass after the match-screen refactor.
+- Browser smoke: `/match?mode=ranked` renders the backend-unavailable state at a 390x844 viewport with no console errors and no page scrolling in this shell; other match states were covered by the new render test because Supabase is not configured locally here.

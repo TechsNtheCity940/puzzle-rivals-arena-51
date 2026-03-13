@@ -172,6 +172,80 @@
     @apply command-panel-soft flex min-h-[72px] flex-col justify-between p-3;
   }
 
+  .match-stage-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 font-hud text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .match-stage-chip-queue {
+    @apply border-white/10 bg-white/5 text-white/75;
+  }
+
+  .match-stage-chip-warning {
+    @apply border-destructive/30 bg-destructive/10 text-destructive;
+  }
+
+  .match-stage-chip-practice {
+    @apply border-primary/30 bg-primary/12 text-primary;
+    box-shadow: 0 12px 28px hsl(var(--primary) / 0.14);
+  }
+
+  .match-stage-chip-live {
+    @apply border-accent/30 bg-accent/14 text-white;
+    box-shadow: 0 12px 28px hsl(var(--accent) / 0.16);
+  }
+
+  .match-stage-chip-intermission {
+    @apply border-primary/20 bg-white/8 text-white;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  }
+
+  .match-timer-cluster {
+    @apply min-w-[134px] rounded-[26px] border border-white/10 px-4 py-3 text-center shadow-[0_18px_50px_rgba(0,0,0,0.34)];
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
+      rgba(7, 9, 18, 0.82);
+  }
+
+  .match-timer-cluster-practice {
+    border-color: hsl(var(--primary) / 0.24);
+  }
+
+  .match-timer-cluster-live {
+    border-color: hsl(var(--accent) / 0.22);
+  }
+
+  .match-timer-cluster-intermission {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .match-progress-track {
+    @apply h-2 overflow-hidden rounded-full bg-white/10;
+  }
+
+  .match-progress-fill {
+    @apply h-full rounded-full;
+  }
+
+  .match-progress-fill-self {
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(84 100% 62%));
+  }
+
+  .match-progress-fill-rival {
+    background: linear-gradient(90deg, hsl(var(--accent)), hsl(300 100% 70%));
+  }
+
+  .match-progress-fill-practice {
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.72), hsl(var(--accent) / 0.88));
+  }
+
+  .match-board-frame {
+    @apply flex min-h-0 flex-1 flex-col rounded-[28px] border border-white/10 bg-black/20 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+  }
+
+  .match-board-scroll {
+    @apply flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-[24px] border border-white/10 bg-background/20 p-3;
+  }
+
   .hud-label {
     @apply font-hud text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground;
   }

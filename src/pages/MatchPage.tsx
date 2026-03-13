@@ -1,14 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Clock, Home, RotateCcw, Share2, Sparkles } from "lucide-react";
+import {
+  Clock3,
+  Home,
+  LoaderCircle,
+  RotateCcw,
+  ScanSearch,
+  Share2,
+  Sparkles,
+  Trophy,
+  UserRoundPlus,
+  Users,
+  WifiOff,
+} from "lucide-react";
 import { useAuthDialog } from "@/components/auth/AuthDialogContext";
-import { Button } from "@/components/ui/button";
 import MatchPuzzleBoard from "@/components/match/MatchPuzzleBoard";
+import PageHeader from "@/components/layout/PageHeader";
+import PuzzleTileButton from "@/components/layout/PuzzleTileButton";
+import { Button } from "@/components/ui/button";
 import { subscribeToLobby, supabaseApi } from "@/lib/api-client";
 import type { BackendLobby, BackendLobbyPlayer, MatchMode, PuzzleSubmission } from "@/lib/backend";
 import { getRankColor } from "@/lib/seed-data";
 import { isSupabaseConfigured, supabaseConfigErrorMessage } from "@/lib/supabase-client";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 
 function formatTime(seconds: number) {
@@ -22,6 +37,10 @@ function formatSolveTime(timeMs: number | null) {
   return `${(timeMs / 1000).toFixed(1)}s`;
 }
 
+function formatMode(mode: MatchMode) {
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
 function rankPlayers(players: BackendLobbyPlayer[]) {
   return [...players].sort((left, right) => {
     if (right.progress !== left.progress) return right.progress - left.progress;
@@ -32,10 +51,123 @@ function rankPlayers(players: BackendLobbyPlayer[]) {
   });
 }
 
+type StageTone = "queue" | "warning" | "practice" | "live" | "intermission";
+type ProgressTone = "self" | "rival" | "practice";
+
+function StageChip({ label, tone }: { label: string; tone: StageTone }) {
+  return <span className={cn("match-stage-chip", `match-stage-chip-${tone}`)}>{label}</span>;
+}
+
+function TimerCluster({
+  label,
+  value,
+  tone,
+  urgent = false,
+}: {
+  label: string;
+  value: string;
+  tone: StageTone;
+  urgent?: boolean;
+}) {
+  return (
+    <div className={cn("match-timer-cluster", `match-timer-cluster-${tone}`, urgent && "glow-threat")}>
+      <p className="font-hud text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <div className="mt-1 flex items-center justify-center gap-2">
+        <Clock3 size={16} className={urgent ? "text-destructive" : "text-primary"} />
+        <span className={cn("text-2xl font-black tracking-tight", urgent ? "text-destructive" : "text-white")}>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function CompactMetric({
+  label,
+  value,
+  accent = false,
+  className,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("compact-metric min-h-[66px]", className)}>
+      <span className="hud-label">{label}</span>
+      <span className={cn("text-sm font-black leading-tight", accent && "text-primary")}>{value}</span>
+    </div>
+  );
+}
+
+function ProgressLane({
+  label,
+  detail,
+  progress,
+  tone,
+  highlight = false,
+}: {
+  label: string;
+  detail: string;
+  progress: number;
+  tone: ProgressTone;
+  highlight?: boolean;
+}) {
+  const clampedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  return (
+    <div className={cn("rounded-[24px] border px-3 py-3", highlight ? "border-primary/18 bg-primary/10" : "border-white/10 bg-black/10")}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black">{label}</p>
+          <p className="truncate font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{detail}</p>
+        </div>
+        <span className={cn("text-xs font-hud font-semibold uppercase tracking-[0.16em]", highlight ? "text-primary" : "text-muted-foreground")}>
+          {clampedProgress}%
+        </span>
+      </div>
+      <div className="match-progress-track">
+        <motion.div
+          className={cn("match-progress-fill", `match-progress-fill-${tone}`)}
+          animate={{ width: `${clampedProgress}%` }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function QueuePlayerTile({
+  player,
+  slotLabel,
+  isSelf,
+}: {
+  player: BackendLobbyPlayer | null;
+  slotLabel: string;
+  isSelf: boolean;
+}) {
+  return (
+    <PuzzleTileButton
+      icon={player ? Users : ScanSearch}
+      title={player ? `${player.username}${isSelf ? " (You)" : ""}` : "Searching..."}
+      description={player ? `${player.rank.toUpperCase()} • ${player.elo} ELO` : "Open slot waiting for a rival"}
+      active={Boolean(player)}
+      disabled
+      right={
+        <div className="text-right">
+          <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{slotLabel}</p>
+          <p className={cn("text-xs font-black", player ? getRankColor(player.rank) : "text-muted-foreground")}>
+            {player ? "Locked" : "Standby"}
+          </p>
+        </div>
+      }
+      className={cn("min-h-[94px]", !player && "opacity-90")}
+    />
+  );
+}
+
 export default function MatchPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { openSignUp } = useAuthDialog();
+  const { openSignIn, openSignUp } = useAuthDialog();
   const mode = (params.get("mode") || "ranked") as MatchMode;
   const { isReady, user, refreshUser, canSave } = useAuth();
 
@@ -233,20 +365,48 @@ export default function MatchPage() {
     }
   }
 
+  const screenShellClassName = "page-screen";
+  const screenStackClassName = "page-stack";
+
   if (!isSupabaseConfigured) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4 py-8">
-        <div className="panel w-full max-w-md space-y-4">
-          <div>
-            <p className="hud-label text-primary">Backend Required</p>
-            <h1 className="mt-2 text-2xl font-black">Matchmaking is unavailable in local mock mode</h1>
-            <p className="mt-2 text-sm text-muted-foreground">{supabaseConfigErrorMessage}</p>
-          </div>
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow="Arena Uplink"
+            title="Backend Required"
+            subtitle="Local mock mode cannot host matchmaking sessions."
+            right={<StageChip label="Offline" tone="warning" />}
+          />
 
-          <Button onClick={() => navigate("/play")} variant="play" size="lg" className="w-full">
-            <Home size={16} />
-            Back to Play
-          </Button>
+          <section className="command-panel flex min-h-0 flex-1 flex-col justify-between gap-3 p-3">
+            <div className="grid gap-3 sm:grid-cols-[1.15fr_0.85fr]">
+              <div className="command-panel-soft flex items-start gap-3 p-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-destructive/30 bg-destructive/10 text-destructive">
+                  <WifiOff size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-black">Match service unavailable</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{supabaseConfigErrorMessage}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <CompactMetric label="Queue" value="Disabled" />
+                <CompactMetric label="Mode" value={formatMode(mode)} accent />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button onClick={() => navigate("/play")} variant="play" size="lg" className="w-full">
+                <Home size={16} />
+                Back to Play
+              </Button>
+              <div className="command-panel-soft flex items-center justify-center px-4 py-3 text-center text-sm text-muted-foreground">
+                Restore the Supabase keys to bring ranked matchmaking back online.
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     );
@@ -254,26 +414,48 @@ export default function MatchPage() {
 
   if (!canSave) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4 py-8">
-        <div className="panel w-full max-w-md space-y-4">
-          <div>
-            <p className="hud-label text-primary">Account Required</p>
-            <h1 className="mt-2 text-2xl font-black">Guests can explore, but ranked stats only save to accounts</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Create an account from the top-right sign-up button, then come back here to start logging live wins,
-              losses, and puzzle performance.
-            </p>
-          </div>
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow="Account Deck"
+            title="Account Required"
+            subtitle="Guest sessions can browse the arena, but ranked match results only persist to a saved account."
+            right={<StageChip label="Locked" tone="warning" />}
+          />
 
-          <div className="flex gap-3">
-            <Button onClick={openSignUp} variant="play" size="lg" className="flex-1">
-              Create Account
-            </Button>
-            <Button onClick={() => navigate("/play")} variant="outline" size="lg">
-              <Home size={16} />
-              Back
-            </Button>
-          </div>
+          <section className="command-panel flex min-h-0 flex-1 flex-col justify-between gap-3 p-3">
+            <div className="grid gap-3 sm:grid-cols-[1.15fr_0.85fr]">
+              <div className="command-panel-soft flex items-start gap-3 p-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-primary/20 bg-primary/10 text-primary">
+                  <UserRoundPlus size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-black">Ranked command deck is account-only</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Sign in or create an account, then return here to queue live matches, save ELO changes, and track puzzle performance.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <CompactMetric label="Queue" value={formatMode(mode)} accent />
+                <CompactMetric label="Rewards" value="Saved" />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Button onClick={openSignUp} variant="play" size="lg" className="w-full">
+                Create Account
+              </Button>
+              <Button onClick={openSignIn} variant="outline" size="lg" className="w-full">
+                Sign In
+              </Button>
+              <Button onClick={() => navigate("/play")} variant="outline" size="lg" className="w-full">
+                <Home size={16} />
+                Back
+              </Button>
+            </div>
+          </section>
         </div>
       </div>
     );
@@ -281,62 +463,84 @@ export default function MatchPage() {
 
   if (!isReady || !user || !lobby) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4 py-8">
-        <div className="panel w-full max-w-md text-center">
-          <p className="hud-label text-primary">Connecting</p>
-          <h1 className="mt-2 text-2xl font-black">Preparing your arena session</h1>
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow="Arena Sync"
+            title="Preparing Session"
+            subtitle="Linking account, queue, and match telemetry before the deck comes online."
+            right={<StageChip label="Connecting" tone="queue" />}
+          />
+
+          <section className="command-panel flex min-h-0 flex-1 flex-col justify-center gap-3 p-3">
+            <div className="command-panel-soft flex flex-col items-center gap-3 p-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary glow-primary">
+                <LoaderCircle size={24} className="animate-spin" />
+              </div>
+              <div>
+                <p className="text-lg font-black">Command deck booting</p>
+                <p className="mt-1 text-sm text-muted-foreground">Reserving your seat in the {formatMode(mode)} arena.</p>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     );
   }
 
   if (lobby.status === "filling") {
-    return (
-      <div className="flex min-h-screen items-center justify-center px-4 py-8">
-        <div className="panel w-full max-w-md space-y-6">
-          <div className="text-center">
-            <p className="hud-label text-primary">Matchmaking Lobby</p>
-            <h1 className="mt-1 text-3xl font-black">Filling Lobby</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Standard matches wait for 4 total players, then the lobby gets one randomly generated puzzle type.
-            </p>
-          </div>
+    const slotCards = Array.from({ length: lobby.maxPlayers }, (_, index) => lobby.players[index] ?? null);
 
-          <div className="rounded-[28px] bg-background/35 p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <span className="font-hud text-xs uppercase tracking-[0.18em] text-muted-foreground">Players Joined</span>
-              <span className="text-lg font-black text-primary">{lobby.players.length}/4</span>
+    return (
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow="Arena Queue"
+            title="Filling Lobby"
+            subtitle="Four-player rooms auto-lock a single puzzle type once the deck is full."
+            right={<StageChip label={`${lobby.players.length}/${lobby.maxPlayers} Ready`} tone="queue" />}
+          />
+
+          <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_auto_1fr] gap-3 overflow-hidden p-3">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <CompactMetric label="Mode" value={formatMode(mode)} accent />
+              <CompactMetric label="Seats" value={`${lobby.players.length}/${lobby.maxPlayers}`} />
+              <CompactMetric label="Puzzle Pick" value="Randomized" />
+              <CompactMetric label="Lobby" value={lobby.id.slice(0, 8).toUpperCase()} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {Array.from({ length: 4 }, (_, index) => lobby.players[index] ?? null).map((player, index) => (
-                <div
-                  key={player?.playerId ?? `open-${index}`}
-                  className={`rounded-3xl border p-4 transition-all ${
-                    player
-                      ? "border-primary/20 bg-primary/10"
-                      : "border-dashed border-border bg-background/20 text-muted-foreground"
-                  }`}
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-lg font-black">
-                    {player ? player.username[0] : "?"}
+
+            <div className="grid gap-3 sm:grid-cols-[1.15fr_0.85fr]">
+              <div className="command-panel-soft p-4">
+                <div className="flex items-center gap-3">
+                  <img
+                    src="/brand/puzzle-rivals-logo.png"
+                    alt="Puzzle Rivals"
+                    className="h-11 w-11 rounded-2xl border border-white/10 object-cover"
+                    draggable={false}
+                  />
+                  <div className="min-w-0">
+                    <p className="hud-label text-primary">Queue Rule</p>
+                    <p className="text-sm font-black">No manual puzzle vetoes</p>
+                    <p className="mt-1 text-xs text-muted-foreground">The arena assigns one type for everyone the moment the final seat locks.</p>
                   </div>
-                  <p className="mt-3 text-sm font-bold">{player ? player.username : "Searching..."}</p>
-                  <p className={`mt-1 text-[11px] font-hud uppercase tracking-[0.16em] ${
-                    player ? getRankColor(player.rank) : "text-muted-foreground"
-                  }`}>
-                    {player ? `${player.rank} ${player.elo}` : "open slot"}
-                  </p>
                 </div>
+              </div>
+              <div className="command-panel-soft flex items-center justify-center px-4 py-3 text-center text-sm text-muted-foreground">
+                Keep this screen open. Practice auto-arms as soon as the roster is complete.
+              </div>
+            </div>
+
+            <div className="grid min-h-0 gap-3 overflow-hidden sm:grid-cols-2">
+              {slotCards.map((player, index) => (
+                <QueuePlayerTile
+                  key={player?.playerId ?? `slot-${index}`}
+                  player={player}
+                  slotLabel={`Seat ${index + 1}`}
+                  isSelf={player?.playerId === user.id}
+                />
               ))}
             </div>
-          </div>
-
-          <div className="rounded-[28px] bg-card/70 p-4 text-center">
-            <p className="font-hud text-xs uppercase tracking-[0.18em] text-muted-foreground">Queue Rule</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              No player-selected puzzle type. The lobby decides together once the room is full.
-            </p>
-          </div>
+          </section>
         </div>
       </div>
     );
@@ -344,96 +548,204 @@ export default function MatchPage() {
 
   if (lobby.status === "ready" && selectionMeta) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="panel w-full max-w-md space-y-6"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="hud-label text-primary">Lobby Full</p>
-              <h1 className="mt-1 text-2xl font-black">Puzzle Selected</h1>
-            </div>
-            <div className="rounded-2xl bg-primary/10 px-3 py-2 text-right">
-              <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">Lobby</p>
-              <p className="text-sm font-black">{lobby.id.slice(0, 8)}</p>
-            </div>
-          </div>
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow="Command Deck Armed"
+            title="Puzzle Locked"
+            subtitle="The lobby has its shared puzzle type. Practice begins automatically in a moment."
+            right={<StageChip label="Arming Practice" tone="queue" />}
+          />
 
-          <div className="grid grid-cols-4 gap-2">
-            {lobby.players.map((player) => (
-              <div key={player.playerId} className="rounded-2xl bg-background/35 p-3 text-center">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-2xl bg-card text-sm font-black">
-                  {player.username[0]}
+          <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-hidden p-3">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="command-panel-soft grid gap-3 p-4 sm:grid-cols-[1.05fr_0.95fr]"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[22px] border border-primary/20 bg-gradient-play text-3xl text-primary-foreground glow-primary">
+                  {selectionMeta.icon}
                 </div>
-                <p className="mt-2 truncate text-[11px] font-bold">{player.username}</p>
+                <div className="min-w-0">
+                  <p className="hud-label text-primary">Selected Type</p>
+                  <p className="text-xl font-black">{selectionMeta.label}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{selectionMeta.description}</p>
+                </div>
               </div>
-            ))}
-          </div>
 
-          <div className="rounded-[32px] border border-primary/20 bg-primary/10 p-6 text-center">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-gradient-play text-5xl text-primary-foreground">
-              {selectionMeta.icon}
-            </div>
-            <p className="mt-4 text-2xl font-black">{selectionMeta.label}</p>
-            <p className="mt-2 text-sm text-muted-foreground">{selectionMeta.description}</p>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-background/35 p-3">
-                <p className="hud-label">Practice</p>
-                <p className="mt-1 text-sm font-black">12s warm-up</p>
+              <div className="grid grid-cols-2 gap-3">
+                <CompactMetric label="Practice" value="12s warm-up" accent />
+                <CompactMetric label="Live Seed" value="Fresh roll" />
+                <CompactMetric label="Difficulty" value={`Tier ${lobby.selection.difficulty}`} />
+                <CompactMetric label="Lobby" value={lobby.id.slice(0, 8).toUpperCase()} />
               </div>
-              <div className="rounded-2xl bg-background/35 p-3">
-                <p className="hud-label">Live</p>
-                <p className="mt-1 text-sm font-black">new generated version</p>
+            </motion.div>
+
+            <div className="grid min-h-0 gap-3 overflow-hidden sm:grid-cols-2">
+              {lobby.players.map((player, index) => (
+                <QueuePlayerTile key={player.playerId} player={player} slotLabel={`Seat ${index + 1}`} isSelf={player.playerId === user.id} />
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderArenaStage(stage: "practice" | "live") {
+    if (!lobby?.selection || !selfPlayer) {
+      return null;
+    }
+
+    const isPractice = stage === "practice";
+    const timeLeft = isPractice ? practiceTimeLeft : liveTimeLeft;
+    const selfProgress = isPractice ? selfPlayer.practiceProgress : Math.max(selfPlayer.progress, optimisticProgress);
+    const progressRows = [
+      {
+        key: selfPlayer.playerId,
+        label: "You",
+        detail:
+          stage === "practice"
+            ? practiceSolved
+              ? "Warm-up locked"
+              : "Practice telemetry"
+            : selfPlayer.solvedAtMs !== null
+              ? `Solved • ${formatSolveTime(selfPlayer.solvedAtMs)}`
+              : "Live telemetry",
+        progress: selfProgress,
+        tone: isPractice ? ("practice" as const) : ("self" as const),
+        highlight: true,
+      },
+      ...rivals.map((rival) => ({
+        key: rival.playerId,
+        label: rival.username,
+        detail:
+          stage === "practice"
+            ? `${rival.rank.toUpperCase()} warm-up`
+            : rival.solvedAtMs !== null
+              ? `Solved • ${formatSolveTime(rival.solvedAtMs)}`
+              : `${rival.rank.toUpperCase()} live`,
+        progress: isPractice ? rival.practiceProgress : rival.progress,
+        tone: isPractice ? ("practice" as const) : ("rival" as const),
+        highlight: false,
+      })),
+    ];
+
+    return (
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow={isPractice ? "Practice Sim" : "Live Arena"}
+            title={lobby.selection.meta.label}
+            subtitle={isPractice ? "Warm up on the shared type before the live seed drops." : "Same puzzle type, fresh generated layout, live scoring enabled."}
+            compact
+            right={
+              <TimerCluster
+                label={isPractice ? "Practice Timer" : "Live Timer"}
+                value={formatTime(timeLeft)}
+                tone={isPractice ? "practice" : "live"}
+                urgent={isPractice ? timeLeft <= 4 : timeLeft <= 10}
+              />
+            }
+          />
+
+          <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3 overflow-hidden p-3">
+            <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="command-panel-soft p-3">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <StageChip label={isPractice ? "Practice" : "Live"} tone={isPractice ? "practice" : "live"} />
+                  <StageChip label={formatMode(mode)} tone="queue" />
+                  <StageChip label={`Tier ${lobby.selection.difficulty}`} tone="queue" />
+                  <StageChip label={`Lobby ${lobby.id.slice(0, 4).toUpperCase()}`} tone="queue" />
+                </div>
+                <div className="grid gap-2">
+                  {progressRows.map((row) => (
+                    <ProgressLane key={row.key} label={row.label} detail={row.detail} progress={row.progress} tone={row.tone} highlight={row.highlight} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <CompactMetric label="Players" value={`${lobby.players.length}`} accent />
+                <CompactMetric label="Current Rank" value={`#${playerRank || 1}`} />
+                <CompactMetric label={isPractice ? "Practice Seed" : "Live Seed"} value={isPractice ? "Scout" : "Active"} />
+                <CompactMetric label="Puzzle Type" value={lobby.selection.meta.label} className="col-span-2" />
               </div>
             </div>
-          </div>
-        </motion.div>
+
+            <div className="match-board-frame">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <div className="min-w-0">
+                  <p className="hud-label text-primary">{isPractice ? "Training Surface" : "Combat Surface"}</p>
+                  <p className="truncate text-sm font-black">{isPractice ? "Practice seed loaded" : "Live seed loaded"}</p>
+                </div>
+                <StageChip label={isPractice ? "Warm-Up" : "Scored"} tone={isPractice ? "practice" : "live"} />
+              </div>
+
+              <div className="match-board-scroll">
+                <MatchPuzzleBoard
+                  key={`${stage}-${isPractice ? lobby.selection.practiceSeed : lobby.selection.liveSeed}`}
+                  puzzleType={lobby.selection.puzzleType}
+                  seed={isPractice ? lobby.selection.practiceSeed : lobby.selection.liveSeed}
+                  difficulty={lobby.selection.difficulty}
+                  isPractice={isPractice}
+                  disabled={isPractice ? false : selfPlayer.solvedAtMs !== null}
+                  onProgress={() => {}}
+                  onStateChange={(submission, progress) => queueProgressSubmission(stage, submission, progress)}
+                  onSolve={isPractice ? () => setPracticeSolved(true) : handleLiveSolve}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="command-panel-soft flex items-center gap-3 p-3">
+                <img
+                  src="/brand/puzzle-rivals-logo.png"
+                  alt="Puzzle Rivals"
+                  className="h-11 w-11 rounded-2xl border border-white/10 object-cover"
+                  draggable={false}
+                />
+                <div className="min-w-0">
+                  <p className="hud-label text-primary">{isPractice ? "Briefing" : "Context"}</p>
+                  <p className="text-sm font-black">{lobby.selection.meta.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {isPractice
+                      ? "A different generated version goes live when the timer expires."
+                      : "Practice and live always share the type, never the exact same seed."}
+                  </p>
+                </div>
+              </div>
+
+              <div className={cn("command-panel-soft p-3", practiceSolved ? "border-primary/20 bg-primary/10" : "")}>
+                <p className="hud-label">{isPractice ? "Status" : "Match Rule"}</p>
+                <p className={cn("text-sm font-black", practiceSolved && "text-primary")}>
+                  {isPractice
+                    ? practiceSolved
+                      ? "Practice solve locked in"
+                      : "Warm-up still open"
+                    : selfPlayer.solvedAtMs !== null
+                      ? "Solve submitted"
+                      : "Score updates live"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {isPractice
+                    ? "Use the short window to learn the pattern and pacing."
+                    : "First full solve and total progress decide the finishing order."}
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     );
   }
 
   if (lobby.status === "practice" && lobby.selection) {
-    return (
-      <div className="flex min-h-screen flex-col px-4 py-6">
-        <div className="panel">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="hud-label text-primary">Practice Round</p>
-              <h1 className="mt-1 text-2xl font-black">{lobby.selection.meta.label}</h1>
-              <p className="mt-2 text-sm text-muted-foreground">{lobby.selection.meta.description}</p>
-            </div>
-            <div className="rounded-2xl bg-primary/10 px-4 py-3 text-center">
-              <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-primary">Time Left</p>
-              <p className="text-3xl font-black text-primary">{practiceTimeLeft}</p>
-            </div>
-          </div>
-          {practiceSolved && (
-            <div className="mt-4 rounded-2xl bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
-              Practice solve locked in. A different generated version loads when the timer ends.
-            </div>
-          )}
-        </div>
-
-        <div className="panel mt-4 flex-1">
-          <MatchPuzzleBoard
-            key={`practice-${lobby.selection.practiceSeed}`}
-            puzzleType={lobby.selection.puzzleType}
-            seed={lobby.selection.practiceSeed}
-            difficulty={lobby.selection.difficulty}
-            isPractice
-            disabled={false}
-            onProgress={() => {}}
-            onStateChange={(submission, progress) => queueProgressSubmission("practice", submission, progress)}
-            onSolve={() => setPracticeSolved(true)}
-          />
-        </div>
-      </div>
-    );
+    return renderArenaStage("practice");
   }
 
-  if (lobby.status === "intermission") {
+  if (lobby.status === "intermission" || lobby.status === "complete") {
     const results = lobby.results?.standings ?? standings.map((player, index) => ({
       playerId: player.playerId,
       username: player.username,
@@ -444,93 +756,101 @@ export default function MatchPage() {
       isBot: player.isBot,
     }));
     const selfResult = results.find((entry) => entry.playerId === user.id);
+    const continueVotes = lobby.players.filter((player) => player.nextRoundVote === "continue").length;
 
     return (
-      <div className="flex min-h-screen flex-col justify-center px-4 py-6">
-        <div className="space-y-4">
-          <div className="text-center">
-            <div className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
-              (selfResult?.rank ?? playerRank) === 1 ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
-            }`}>
-              <Sparkles size={30} />
-            </div>
-            <p className="mt-4 text-3xl font-black">Rank #{selfResult?.rank ?? playerRank}</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {selectionMeta?.label} live match finished with a fresh generated seed.
-            </p>
-            <div className="mt-4 inline-flex rounded-2xl bg-background/35 px-4 py-3 text-center">
-              <div>
-                <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Decision Timer</p>
-                <p className="text-2xl font-black text-primary">{intermissionTimeLeft}s</p>
-              </div>
-            </div>
-          </div>
+      <div className={screenShellClassName}>
+        <div className={screenStackClassName}>
+          <PageHeader
+            eyebrow="Results Relay"
+            title={`Rank #${selfResult?.rank ?? playerRank}`}
+            subtitle={`${selectionMeta?.label ?? "Puzzle"} concluded. Rewards, standings, and the next-round vote are live.`}
+            compact
+            right={<TimerCluster label="Decision Timer" value={`${intermissionTimeLeft}s`} tone="intermission" urgent={intermissionTimeLeft <= 5} />}
+          />
 
-          <div className="panel space-y-3">
-            {results.map((entry) => (
-              <div
-                key={entry.playerId}
-                className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${
-                  entry.playerId === user.id ? "bg-primary/10" : "bg-background/30"
-                }`}
-              >
-                <div className="w-10 text-center font-hud text-sm font-semibold">#{entry.rank}</div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-card text-sm font-black">
-                  {entry.username[0]}
+          <section className="command-panel grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3 overflow-hidden p-3">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <CompactMetric label="XP" value={`+${selfResult?.reward.xp ?? 0}`} accent />
+              <CompactMetric label="Coins" value={`+${selfResult?.reward.coins ?? 0}`} />
+              <CompactMetric label="ELO" value={`${(selfResult?.reward.elo ?? 0) >= 0 ? "+" : ""}${selfResult?.reward.elo ?? 0}`} className={(selfResult?.reward.elo ?? 0) >= 0 ? "text-primary" : "text-destructive"} />
+              <CompactMetric label="Votes" value={`${continueVotes}/${lobby.players.length} Continue`} />
+            </div>
+
+            <div className="grid min-h-0 gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid min-h-0 gap-3 overflow-hidden">
+                {results.map((entry) => (
+                  <PuzzleTileButton
+                    key={entry.playerId}
+                    icon={entry.rank === 1 ? Trophy : Sparkles}
+                    title={`${entry.username}${entry.playerId === user.id ? " (You)" : ""}`}
+                    description={`${entry.progress}% complete • ${formatSolveTime(entry.solvedAtMs)}`}
+                    active={entry.playerId === user.id}
+                    disabled
+                    right={<span className="text-sm font-black text-primary">#{entry.rank}</span>}
+                    className="min-h-[82px]"
+                  />
+                ))}
+              </div>
+
+              <div className="grid gap-3">
+                <div className="command-panel-soft p-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={cn(
+                        "flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border text-xl",
+                        (selfResult?.rank ?? playerRank) === 1 ? "border-primary/30 bg-primary/12 text-primary glow-primary" : "border-accent/30 bg-accent/12 text-accent glow-prestige",
+                      )}
+                    >
+                      <Sparkles size={22} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="hud-label text-primary">Round Summary</p>
+                      <p className="text-base font-black">{selectionMeta?.label ?? "Puzzle"} cleared</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {(selfResult?.rank ?? playerRank) === 1 ? "First place secured." : "Standings locked for this round."}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold">{entry.username}{entry.playerId === user.id ? " (You)" : ""}</p>
-                  <p className="text-[11px] font-hud uppercase tracking-[0.16em] text-muted-foreground">
-                    {entry.progress}% complete - {formatSolveTime(entry.solvedAtMs)}
+
+                <div className="command-panel-soft p-4">
+                  <p className="hud-label">Next Round Vote</p>
+                  <p className="text-sm font-black">{votePending ? "Submitting vote..." : "Stay with this lobby or exit to Play."}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Continue votes: {continueVotes}. Exit immediately returns you to the play deck.
                   </p>
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div className="panel space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">XP Earned</span>
-              <span className="font-black">+{selfResult?.reward.xp ?? 0}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Coins Earned</span>
-              <span className="font-black">+{selfResult?.reward.coins ?? 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">ELO Change</span>
-              <span className={(selfResult?.reward.elo ?? 0) >= 0 ? "font-black text-primary" : "font-black text-destructive"}>
-                {(selfResult?.reward.elo ?? 0) >= 0 ? "+" : ""}{selfResult?.reward.elo ?? 0}
-              </span>
-            </div>
-          </div>
 
-          <div className="flex gap-3">
-            <Button
-              onClick={() => void submitNextRoundVote("continue")}
-              variant="play"
-              size="lg"
-              className="flex-1"
-              disabled={votePending !== null}
-            >
-              <RotateCcw size={16} />
-              Next Round
-            </Button>
-            <Button
-              onClick={() => void submitNextRoundVote("exit")}
-              variant="outline"
-              size="lg"
-              disabled={votePending !== null}
-            >
-              <Share2 size={16} />
-              Exit Lobby
-            </Button>
-          </div>
-
-          <Button onClick={() => setRematchKey((current) => current + 1)} variant="outline" size="lg" className="w-full">
-            <Home size={16} />
-            Find New Lobby
-          </Button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                onClick={() => void submitNextRoundVote("continue")}
+                variant="play"
+                size="lg"
+                className="w-full"
+                disabled={votePending !== null}
+              >
+                <RotateCcw size={16} />
+                Next Round
+              </Button>
+              <Button
+                onClick={() => void submitNextRoundVote("exit")}
+                variant="outline"
+                size="lg"
+                className="w-full"
+                disabled={votePending !== null}
+              >
+                <Share2 size={16} />
+                Exit Lobby
+              </Button>
+              <Button onClick={() => setRematchKey((current) => current + 1)} variant="outline" size="lg" className="w-full sm:col-span-2">
+                <Home size={16} />
+                Find New Lobby
+              </Button>
+            </div>
+          </section>
         </div>
       </div>
     );
@@ -540,75 +860,5 @@ export default function MatchPage() {
     return null;
   }
 
-  return (
-    <div className="flex min-h-screen flex-col px-4 py-4">
-      <div className="panel space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">{lobby.selection.meta.icon}</span>
-            <div>
-              <p className="hud-label">Live Match</p>
-              <p className="text-sm font-bold">{lobby.selection.meta.label}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock size={16} className={liveTimeLeft <= 10 ? "text-destructive" : "text-primary"} />
-            <span className={`font-hud text-2xl font-bold ${liveTimeLeft <= 10 ? "text-destructive" : "text-primary"}`}>
-              {formatTime(liveTimeLeft)}
-            </span>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 rounded-2xl bg-primary/10 px-3 py-2">
-            <span className="w-20 truncate text-xs font-hud uppercase tracking-[0.14em] text-muted-foreground">You</span>
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-              <motion.div className="h-full rounded-full bg-primary" animate={{ width: `${Math.max(selfPlayer.progress, optimisticProgress)}%` }} />
-            </div>
-            <span className="w-10 text-right text-xs font-hud text-primary">{Math.round(Math.max(selfPlayer.progress, optimisticProgress))}%</span>
-          </div>
-
-          {rivals.map((rival) => (
-            <div key={rival.playerId} className="flex items-center gap-2 rounded-2xl bg-background/30 px-3 py-2">
-              <span className="w-20 truncate text-xs font-hud uppercase tracking-[0.14em] text-muted-foreground">
-                {rival.username}
-              </span>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                <motion.div className="h-full rounded-full bg-accent" animate={{ width: `${rival.progress}%` }} />
-              </div>
-              <span className="w-10 text-right text-xs font-hud text-muted-foreground">{Math.round(rival.progress)}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="panel mt-4 flex-1">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <p className="hud-label">New Live Variation</p>
-            <p className="mt-1 text-lg font-black">Same puzzle type, new generated layout</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Practice and live always share the puzzle type but never the exact same seed.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-background/35 px-3 py-2 text-center">
-            <p className="font-hud text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Players</p>
-            <p className="text-lg font-black">{lobby.players.length}</p>
-          </div>
-        </div>
-
-        <MatchPuzzleBoard
-          key={`live-${lobby.selection.liveSeed}`}
-          puzzleType={lobby.selection.puzzleType}
-          seed={lobby.selection.liveSeed}
-          difficulty={lobby.selection.difficulty}
-          isPractice={false}
-          disabled={selfPlayer.solvedAtMs !== null}
-          onProgress={() => {}}
-          onStateChange={(submission, progress) => queueProgressSubmission("live", submission, progress)}
-          onSolve={handleLiveSolve}
-        />
-      </div>
-    </div>
-  );
+  return renderArenaStage("live");
 }
